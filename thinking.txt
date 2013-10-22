@@ -1,0 +1,78 @@
+
+- auf verzeichnis-ebene angeben, welche dateien lokal vorhanden sein sollen
+- dateiinhalte ueber hashes (SHA, WORM, etc... identifizieren)
+
+- Repository
+  - eindeutige id (z.B. hash-wert aus rechnername, erstellungszeitpunkt,
+	verzeichnis)
+  - kurzname (z.B. rechnername, vom user gewaehlt)
+  - liste von zu syncenden verzeichnisse / regeln
+
+- DAG aus repository-zustaenden
+  - jeder commit enthaelt
+	- parent(s)
+	- hash-werte von *allen* files im repository
+	- locations 
+
+	
+-- Wie findet man dateien und stellt beim (checked) soft-delete sicher,
+dass sie noch irgendwo existieren?
+
+A) im commit merken, wo welche dateien sind,
+   nach loeschen muss es nen neuen commit geben, vorm
+   loeschen muss der synchronisiert worden sein
+   
+   was wenn
+   
+   C1 ------ C2 ---
+      \         
+	   `---- C3 ---
+ 
+   C2: a.txt @calculon,r2d2
+   C3: a.txt @staubigsauger,r2d2
+   
+   wer hatt denn jetzt recht?
+   Ggf. kann der mergende rechner weder auf calculon noch auf staubigsauger
+   zugreifen!
+   
+   haengt von C1 ab:
+   --> repository, das den commit gemacht hat mittracken.
+   Nur dieses kann in listen auftauchen oder verschwinden.
+   Dann mergen wie folgt
+   
+   C2              C3               -> C4
+   @calculon       @calculon        @calculon,r2d2  (C3 komisch, weil er
+										   location info ueber staubigsauger hat, ohne dass der staubigsauger-commit
+										   da ist)
+   @staubigsauger  @calculon        @r2d2 beide komisch, sollte so nicht
+										   passieren koennen
+   @calculon       @staubigsauger   @calculon,staubigsauger,r2d2
+   @staubigsauger  @staubigsauger   @staubigsauger,r2d2, C2 komisch
+   
+b) verantwortung des user, z.B. empfehlung mind. ein
+   repo zu haben, dass alle dateien haelt
+c) vorm loeschen repos kontaktieren.
+   -> offline loeschen wird dann nicht genehmigt :/
+
+   
+Soll es trust-level geben (wie bei annex?)
+- erste implementierung: trusted, spaeter semitrusted
+   
+
+-- Was soll die semantik von "rm some-file" sein?
+a) temporary soft-delete: datei ist temporaer bis zum naechsten content-sync nicht
+   verfuegbar, wird aber wieder geholt werden
+   problem: unintuitiv!
+   
+B) soft-delete: datei wird automatisch auf die ignore-liste gesetzt
+   problem: unvollstaendige content-syncs fuehren auch zu nicht-existenten
+   dateien! --> gucken, ob die datei vorher da war und jetzt nicht mehr,
+   nur dann auf ignore-liste setzen
+   
+c) hard-delete: datei wird in allen anderen repos geloescht werden
+   -> sehr unintuitiv und gefaehrlich
+
+   
+-- Wie sieht die synchronisationstopologie aus?
+   
+# vim: set ts=4 sw=4 tw=78 noexpandtab:
