@@ -6,7 +6,7 @@ import fnmatch
 import hashlib
 from file_info import FileInfo
 from commit import Commit
-
+import uuid
 import json_encoder
 
 class Repository:
@@ -19,8 +19,9 @@ class Repository:
 	# 
 	
 	def make_relative(self, filename):
-		# TODO
-		return filename
+		relpath = os.path.relpath(os.path.abspath(filename),
+				os.path.abspath(self.location))
+		return relpath
 	
 	#
 	# Directories, loading/saving config files, etc...
@@ -45,7 +46,8 @@ class Repository:
 	
 	def save_json_config(self, name, data):
 		filepath = os.path.join(self.harmony_dir(), name)
-		json.dump(data, open(filepath, 'w'))
+		json.dump(data, open(filepath, 'w'), sort_keys=True, indent=2,
+				separators=(',', ': '))
 	
 	def load_config(self):
 		self.config = self.load_json_config('config', {})
@@ -70,7 +72,10 @@ class Repository:
 	def pattern_match(self, pattern, path):
 		return fnmatch.fnmatch(path, pattern)
 	
-	def get_rules(self, relative_path):
+	def get_rules(self, p):
+		relative_path = self.make_relative(p)
+		print("get_rules({})".format(relative_path))
+		
 		self.load_rules()
 		for r in self.rules['rules']:
 			if self.pattern_match(r['pattern'], relative_path):
@@ -79,7 +84,7 @@ class Repository:
 		# implicit rules:
 		# ignore .harmony/
 		if self.pattern_match('.harmony/*', relative_path):
-			return r['ignore']
+			return ['ignore']
 		
 		return []
 	
@@ -95,9 +100,9 @@ class Repository:
 		
 	
 	def head(self):
-		return load_commit(self.head_id())
+		return get_commit(self.head_id())
 	
-	def load_commit(self, commit_id):
+	def get_commit(self, commit_id):
 		self.load_json_config(self, os.path.join('commits', commit_id))
 	
 	def add_commit(self, c):
@@ -112,7 +117,10 @@ class Repository:
 	
 	def init(self):
 		os.makedirs(os.path.join(self.harmony_dir(), 'commits'))
-		
+		self.load_config()
+		# TODO: don't do this if a config already exists!
+		self.config['id'] = str(uuid.uuid1())
+		self.save_config()
 		
 	def commit(self):
 		s = Commit()
@@ -123,14 +131,15 @@ class Repository:
 		
 		for root, dirs, files in os.walk(self.location):
 			for filename in files:
-				rules = self.get_rules(filename)
+				rules = self.get_rules(os.path.join(root, filename))
 				if 'ignore' not in rules:
 					fi = FileInfo(open(os.path.join(root, filename), 'rb'))
 					s.add_file(self.make_relative(filename), fi)
 	
+		if len(s.parents) != 1 or s != get_commit(s.parents[0]):
 		#if s.is_nontrivial():
 		# TODO: only add, if not exactly the same state as parent
-		self.add_commit(s)
+			self.add_commit(s)
 			
 	def fetch(self, remote):
 		r = self.get_remote(remote)

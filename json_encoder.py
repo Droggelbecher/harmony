@@ -1,5 +1,6 @@
 
 import json
+import uuid
 
 json_classes = set()
 
@@ -8,7 +9,10 @@ class JSONEncoder(json.JSONEncoder):
 		if isinstance(obj, set):
 			return list(obj)
 		
-		if type(obj) in json_classes:
+		#elif isinstance(obj, uuid.UUID):
+			#return str(obj)
+		
+		elif type(obj) in json_classes:
 			print(obj)
 			return obj.serialize()
 		

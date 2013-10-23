@@ -22,17 +22,27 @@ class Commit:
 	def __init__(self):
 		self.parents = set()
 		self.files = {}
-		
+	
+	#
+	# Serialization, Comparison
+	# 
+	
 	def serialize(self):
 		return {
 			'parents': self.parents,
 			'files': self.files,
 		}
 	
+	
+		
+		
 	def add_file(self, relative_path, fi):
 		self.files[relative_path] = fi
 	
 	def lca(self, other):
+		"""
+		Return lowest common ancestor.
+		"""
 		if self == other: return self
 		
 		ancestors_self = set()
