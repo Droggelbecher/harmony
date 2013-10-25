@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import protocols.file
+
 import commandline
 import sys
 

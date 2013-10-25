@@ -3,25 +3,19 @@ from file_info import FileInfo
 import json_encoder
 
 class Commit:
-	"""
-	timestamp
-	parents = []
-	
-	files = {
-		'relative/path/to/file': FileInfo({
-			'content-id': 'SHA256:1234567890123456',
-			'meta-info': {
-				'type': 'MP3',
-				'artist': 'Led Zeppelin',
-			},
-			'sources': set(['calculon', 'r2d2']),
-		})
-	}
-	"""
-	
-	def __init__(self):
+	def __init__(self, repo = None):
 		self.parents = set()
 		self.files = {}
+		if repo:
+			self.repository_id = repo.get_repository_id()
+		else:
+			self.repository_id = None
+		
+	def add_parent(self, parent):
+		self.parents.add(parent)
+	
+	def empty(self):
+		return len(self.files) == 0
 	
 	#
 	# Serialization, Comparison
@@ -29,15 +23,24 @@ class Commit:
 	
 	def serialize(self):
 		return {
+			'creating_repository': self.repository_id,
 			'parents': self.parents,
 			'files': self.files,
 		}
 	
-	
-		
+	@staticmethod
+	def deserialize(dct):
+		r = Commit()
+		r.repository_id = dct['creating_repository']
+		r.parents = dct['parents']
+		r.files = dct['files']
+		return r
 		
 	def add_file(self, relative_path, fi):
 		self.files[relative_path] = fi
+		
+	def get_file(self, relative_path):
+		return self.files.get(relative_path, None)
 	
 	def lca(self, other):
 		"""
