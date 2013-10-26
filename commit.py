@@ -80,7 +80,7 @@ class Commit:
 		if other.is_ancestor(self): return self.copy(), set()
 		
 		# Non-trivial merge
-		r = RepositoryState()
+		r = Commit()
 		r.parents = (self, other)
 		conflicts = set()
 		

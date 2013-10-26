@@ -2,6 +2,7 @@
 import shutil
 import os
 import os.path
+import logging
 
 import protocol
 
@@ -16,6 +17,8 @@ class FileProtocol:
 		return os.path.join(protocol.split_uri(uri)[1], remote_relative_path)
 	
 	def get_file(self, uri, remote_relative_path, local_absolute_path):
+		logging.debug("cp {} -> {}".format(self.to_dir(uri, remote_relative_path),
+				local_absolute_path))
 		shutil.copyfile(self.to_dir(uri, remote_relative_path), local_absolute_path)
 		
 	def get_recursive(self, uri, remote_relative_path, local_absolute_path):

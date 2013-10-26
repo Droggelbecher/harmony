@@ -7,11 +7,14 @@ import hashlib
 import uuid
 import logging
 import socket
+import tempfile
 
 import json_encoder
 import protocol
+import protocols.file
 from file_info import FileInfo
 from commit import Commit
+from remote import Remote
 
 class Repository:
 	
@@ -44,18 +47,21 @@ class Repository:
 	def load_json_config(self, name, default = {}):
 		filepath = os.path.join(self.harmony_dir(), name)
 		if not os.path.exists(filepath):
-			json.dump(default, open(filepath, 'w'))
+			with open(filepath, 'w') as f:
+				json.dump(default, f)
 			
 		try:
-			obj = json.load(open(filepath, 'r'))
+			with open(filepath, 'r') as f:
+				obj = json.load(f)
 		except ValueError:
 			obj = {}
 		return obj
 	
 	def save_json_config(self, name, data):
 		filepath = os.path.join(self.harmony_dir(), name)
-		json.dump(data, open(filepath, 'w'), sort_keys=True, indent=2,
-				separators=(',', ': '))
+		with open(filepath, 'w') as f:
+			json.dump(data, f, sort_keys=True, indent=2,
+					separators=(',', ': '))
 	
 	def load_config(self):
 		self.config = self.load_json_config('config', {})
@@ -107,13 +113,16 @@ class Repository:
 	 
 	def set_head(self, hid):
 		path = os.path.join(self.harmony_dir(), 'HEAD')
-		open(path, 'w').write(hid.strip())
+		with open(path, 'w') as f:
+			f.write(hid.strip())
 	
 	def head_id(self):
 		path = os.path.join(self.harmony_dir(), 'HEAD')
 		if not os.path.exists(path):
 			return None
-		return open(path, 'r').read().strip()
+		with open(path, 'r') as f:
+			r = f.read().strip()
+		return r
 		
 	
 	def head(self):
@@ -121,7 +130,9 @@ class Repository:
 	
 	def get_commit(self, commit_id):
 		filepath = os.path.join(self.harmony_dir(), 'commits/' + commit_id)
-		return json.load(open(filepath, 'r'), object_hook = json_encoder.object_hook)
+		with open(filepath, 'r') as f:
+			r = json.load(f, object_hook = json_encoder.object_hook)
+		return r
 	
 	def add_commit(self, c):
 		s = json.dumps(c,
@@ -132,8 +143,20 @@ class Repository:
 		)
 		h = hashlib.sha256(s.encode('utf-8')).hexdigest()
 		filepath = os.path.join(self.harmony_dir(), 'commits/' + h)
-		open(filepath, 'w').write(s)
+		with open(filepath, 'w') as f:
+			f.write(s)
 		return h
+	
+	#
+	# Remotes
+	# 
+	
+	def get_remote(self, remote_id):
+		self.load_remotes()
+		if remote_id not in self.remotes:
+			return None
+		d = self.remotes[remote_id]
+		return Remote(self, remote_id, d['uri'], d['nickname'])
 	
 	#
 	# Repository commands
@@ -165,14 +188,23 @@ class Repository:
 		
 		proto = protocol.find_protocol(uri)
 		proto.get_recursive(uri, '.harmony/commits', self.harmony_dir('commits'))
-		proto.get_file(uri, '.harmony/HEAD', self.harmony_dir('HEAD'))
+		try:
+			proto.get_file(uri, '.harmony/HEAD', self.harmony_dir('HEAD'))
+		except FileNotFoundError:
+			logging.warning('remote repo does not have a HEAD (probably you havent committed there yet?)')
 		proto.get_file(uri, '.harmony/remotes', self.harmony_dir('remotes'))
 		
 		self.make_config()
 		
-		# TODO: use proper tempfile here
-		proto.get_file(uri, '.harmony/config', '/tmp/remote_config')
-		remote_cfg = json.load(open('/tmp/remote_config', 'r'))
+		fd, tmpfilename = tempfile.mkstemp()
+		os.close(fd)
+		try:
+			proto.get_file(uri, '.harmony/config', tmpfilename)
+			with open(tmpfilename, 'r') as f:
+				remote_cfg = json.load(f)
+		finally:
+			os.remove(tmpfilename)
+		
 		remote_id = remote_cfg['id']
 		remote_nickname = remote_cfg.get('nickname', 'origin')
 		
@@ -184,77 +216,84 @@ class Repository:
 		self.save_remotes()
 		
 	def commit(self):
-		s = Commit(self)
+		c = Commit(self)
 		
 		parent_id = self.head_id()
+		
+		# Copy states from parent
+		
 		if parent_id is not None:
-			s.add_parent(parent_id)
+			c.add_parent(parent_id)
+			parent = self.get_commit(parent_id)
+			c.files = parent.files.copy()
+		
+		# Add/update files from working dir
 		
 		changed = False
-		
 		for root, dirs, files in os.walk(self.location):
 			for filename in files:
-				rules = self.get_rules(os.path.join(root, filename))
-				fi = FileInfo(open(os.path.join(root, filename), 'rb'))
-				fi.sources.add(self.get_repository_id())
-				relfn = self.make_relative(os.path.join(root, filename))
-				parent_fi = None
-				if parent_id is not None:
-					parent_fi = self.get_commit(parent_id).get_file(relfn)
-					
+				absfn = os.path.join(root, filename)
+				relfn = self.make_relative(absfn)
+				rules = self.get_rules(relfn)
+				with open(relfn, 'rb') as f:
+					new_fi = FileInfo(f)
+				fi = None
+				if relfn in c.files:
+					prev_fi = c.files[relfn]
+				
 				if 'ignore' in rules:
 					logging.debug('ignoring {}'.format(relfn))
-					if parent_fi is not None:
-						if fi.content_id != parent_fi.content_id:
-							logging.warn('ignored file {} diverged from repository'.format(relfn))
-						s.add_file(relfn, parent_fi)
+					if fi and new_fi.content_id != fi.content_id:
+						logging.warn('local version of ignored file {} differs from repo version'.format(relfn))
 						
 				else:
-					if parent_fi is not None:
-						# File (with that name) has been there before
-						if fi.content_id != parent_fi.content_id:
-							# File has changed 
-							logging.info('updated {}'.format(relfn))
-							s.add_file(relfn, fi)
-							changed = True
-							
-						else:
-							# File has not changed
-							fi.sources.update(parent_fi.sources)
-							s.add_file(relfn, fi)
-							
-					else:
-						# File has not been here before
-						logging.info('created {}'.format(relfn))
-						s.add_file(relfn, fi)
+					if fi and new_fi.content_id != fi.content_id:
 						changed = True
-	
+						logging.info('updated {}'.format(relfn))
+						new_fi.action = 'updated'
+						new_fi.sources.add(self.get_repository_id())
+						c.files[relfn] = new_fi
+					
+					elif not fi:
+						changed = True
+						logging.info('created {}'.format(relfn))
+						new_fi.action = 'created'
+						new_fi.sources.add(self.get_repository_id())
+						c.files[relfn] = new_fi
 		if changed:
-			commit_id = self.add_commit(s)
+			commit_id = self.add_commit(c)
 			self.set_head(commit_id)
 		else:
 			logging.info('nothing to commit')
-			
-	def fetch(self, remote):
-		r = self.get_remote(remote)
-		r.fetch(self.remote_dir(remote.name))
-	
-	def whereis(self, relpath):
-		self.load_remotes()
 		
+	def get_sources(self, relpath):
 		cid = self.head_id()
-		while cid is not None:
+		if cid is not None:
 			c = self.get_commit(cid)
 			f = c.get_file(relpath)
 			if f is not None:
-				for s in f.sources:
-					if s in self.remotes:
-						print("{} {:20s} {}".format(s, self.remotes[s].get('nickname', ''),
-							self.remotes[s].get('uri', '')))
-					else:
-						print(s)
-				return
-			if len(c.parents) != 1: break
-			cid = c.parents[0]
-		logging.info('{} not found in history'.format(relpath))
+				return f.sources
+		return []
+	
+	def whereis(self, relpath):
+		self.load_remotes()
+		for s in self.get_sources(relpath):
+			if s in self.remotes:
+				print("{} {:20s} {}".format(s, self.remotes[s].get('nickname', ''),
+					self.remotes[s].get('uri', '')))
+			else:
+				logging.warning('no info available about remote {}'.format(s))
+				print(s)
+		else:
+			logging.info('{} not found in repository'.format(relpath))
+			
+	def get(self, relpath):
+		for src in self.get_sources(relpath):
+			remote = self.get_remote(src)
+			if src is None:
+				logging.warning('no info available about remote {}, ignoring'.format(s))
+				continue
+			remote.get(relpath)
+			return
+		logging.error('no remote found to provide {}'.format(relpath))
 

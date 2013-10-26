@@ -9,7 +9,7 @@ class JSONEncoder(json.JSONEncoder):
 		if isinstance(obj, set):
 			return list(obj)
 		
-		classname = type(obj).__qualname__
+		classname = type(obj).__name__
 		t = json_classes.get(classname, None)
 		if t is not None:
 			d = obj.serialize()
@@ -25,5 +25,5 @@ def object_hook(dct):
 
 def register(cls):
 	global json_classes
-	json_classes[cls.__qualname__] = cls
+	json_classes[cls.__name__] = cls
 	

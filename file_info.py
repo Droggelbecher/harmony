@@ -12,11 +12,13 @@ class FileInfo:
 		else:
 			self.content_id = None
 		self.sources = set()
+		self.action = None
 		
 	def serialize(self):
 		return {
 			'content_id': self.content_id,
-			'sources': list(self.sources)
+			'sources': list(self.sources),
+			'action': self.action,
 		}
 		
 	@staticmethod
@@ -24,6 +26,7 @@ class FileInfo:
 		r = FileInfo()
 		r.content_id = dct['content_id']
 		r.sources = dct['sources']
+		r.action = dct.get('action', None)
 		return r
 		
 	def copy(self):

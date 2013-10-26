@@ -2,17 +2,22 @@
 
 import random
 import unittest
-from repository_state import RepositoryState
+import logging
+from commit import Commit
 from io import StringIO
 from io import BytesIO
 from file_info import FileInfo
+import os
+import os.path
+import tempfile
+import commandline
 
 class TestRepository(unittest.TestCase):
 	
 	def test_lca(self):
-		a = RepositoryState()
-		b = RepositoryState()
-		c = RepositoryState()
+		a = Commit()
+		b = Commit()
+		c = Commit()
 		
 		self.assertEqual(a.lca(a), a)
 		
@@ -35,17 +40,17 @@ class TestRepository(unittest.TestCase):
 		# TODO: multiple parents, diamonds, etc...
 		
 	def test_merge(self):
-		a = RepositoryState()
-		b = RepositoryState()
+		a = Commit()
+		b = Commit()
 		c, conflicts = a.merge(b)
 		self.assertEqual(len(conflicts), 0)
 		self.assertEqual(set(c.parents), set((a, b)))
 		
-		a = RepositoryState()
+		a = Commit()
 		fia = FileInfo(BytesIO(b"This is foo.txt"))
 		a.add_file('a.txt', fia)
 		
-		b = RepositoryState()
+		b = Commit()
 		fib = FileInfo(BytesIO(b"This is bar.txt"))
 		b.add_file('b.txt', fib)
 		
@@ -54,9 +59,94 @@ class TestRepository(unittest.TestCase):
 		self.assertEqual(set(c.parents), set((a, b)))
 		self.assertEqual(c.files['a.txt'], fia)
 		self.assertEqual(c.files['b.txt'], fib)
+	
+	def allfiles(self, directory):
+		r = []
+		for root, dirs, files in os.walk(directory):
+			for f in files:
+				abspath = os.path.join(root, f)
+				relpath = os.path.relpath(os.path.abspath(abspath), os.path.abspath(directory))
+				r.append(relpath)
+		return sorted(r)
+	
+	def create_file(self, dirname, fname, content = ''):
+		with open(os.path.join(dirname, fname), 'w') as f:
+			f.write(content)
+			
+	def check_file(self, dirname, fname, content = ''):
+		path = os.path.join(dirname, fname)
+		print(path)
+		self.assertTrue(os.path.exists(path))
+		self.assertTrue(os.path.isfile(path))
+		with open(path, 'r') as f:
+			self.assertEqual(f.read(), content)
+	
+	def test_init(self):
+		expected_files_after_init = sorted([
+				'.harmony/config',
+				'.harmony/remotes'
+		])
 		
+		#
+		# 'init' creates exactly the expected files
+		#
 		
+		with tempfile.TemporaryDirectory() as tmpdir:
+			os.chdir(tmpdir)
+			commandline.run_command(['init'])
+			self.assertEqual(self.allfiles(tmpdir), expected_files_after_init)
+		
+		expected = sorted(
+				expected_files_after_init +
+				[ 'foo.txt', 'bar.txt' ]
+		)
+		
+		#
+		# Pre-existing files are untouched and do not
+		# trigger additional file creation
+		# 
+		
+		with tempfile.TemporaryDirectory() as tmpdir:
+			os.chdir(tmpdir)
+			self.create_file(tmpdir, 'foo.txt', 'tach')
+			self.create_file(tmpdir, 'bar.txt')
+			
+			commandline.run_command(['init'])
+			self.assertEqual(self.allfiles(tmpdir), expected)
+		
+		#
+		# A second init in the same directory fails
+		# 
+		
+		with tempfile.TemporaryDirectory() as tmpdir:
+			os.chdir(tmpdir)
+			commandline.run_command(['init'])
+			with self.assertRaises(FileExistsError):
+				commandline.run_command(['init'])
+				
+	def test_clone(self):
+		with tempfile.TemporaryDirectory() as tmpdir1, \
+				tempfile.TemporaryDirectory() as tmpdir2:
+			os.chdir(tmpdir1)
+			commandline.run_command(['init'])
+			
+			os.chdir(tmpdir2)
+			commandline.run_command(['clone', tmpdir1])
+			
+	def test_get(self):
+		with tempfile.TemporaryDirectory() as tmpdir1, \
+				tempfile.TemporaryDirectory() as tmpdir2:
+			os.chdir(tmpdir1)
+			commandline.run_command(['init'])
+			self.create_file(tmpdir1, 'example.txt', 'This is an example.')
+			commandline.run_command(['commit'])
+			
+			os.chdir(tmpdir2)
+			commandline.run_command(['clone', tmpdir1])
+			commandline.run_command(['get', 'example.txt'])
+			self.check_file(tmpdir2, 'example.txt', 'This is an example.')
 
 if __name__ == '__main__':
+	logging.basicConfig(level = logging.DEBUG, format = '[{levelname:7s}] {message:s}', style = '{')
 	unittest.main()
 
