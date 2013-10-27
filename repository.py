@@ -183,6 +183,39 @@ class Repository:
 		os.makedirs(self.harmony_dir('commits'))
 		self.make_config()
 		
+	def pull_state(self):
+		"""
+		Synchronize state with all known & reachable remotes.
+		Note that this does not transfer any payload (i.e. does not alter
+		the working copy), but only updates the history.
+		"""
+		
+		self.load_remotes()
+		for remote_id, remote_info in self.remotes:
+			if remote_info.uri == 'file:.': continue
+			remote = get_remote(remote_id)
+			proto = remote.get_protocol()
+			
+			# TODO: mkstemp call
+			proto.get_file(remote.uri, '.harmony/HEAD', tmpfilename)
+			
+			# get remote HEAD id
+			# xs = set(remote HEAD id)
+			# 
+			# bool remote_is_subset = (remote HEAD id in local commits);
+			# 
+			# while xs nonempty, pop x:
+			# 	if x in local commits:
+			# 		if local commit is local HEAD:
+			# 			remote_is_superset = true
+			# 		XXX
+			# 	else:
+			# 		fetch remote commit x
+			# 		xs += x.parents
+			# 		
+			# if !remote_is_subset and !remote_is_superset:
+			# 	merge(local HEAD, remote HEAD)
+		
 	def clone(self, uri):
 		os.makedirs(self.harmony_dir())
 		
@@ -296,4 +329,4 @@ class Repository:
 			remote.get(relpath)
 			return
 		logging.error('no remote found to provide {}'.format(relpath))
-
+		

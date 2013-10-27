@@ -134,6 +134,9 @@ class TestRepository(unittest.TestCase):
 			commandline.run_command(['clone', tmpdir1])
 			
 	def test_get(self):
+		#
+		# Get works (locally)
+		# 
 		with tempfile.TemporaryDirectory() as tmpdir1, \
 				tempfile.TemporaryDirectory() as tmpdir2:
 			os.chdir(tmpdir1)
@@ -145,6 +148,37 @@ class TestRepository(unittest.TestCase):
 			commandline.run_command(['clone', tmpdir1])
 			commandline.run_command(['get', 'example.txt'])
 			self.check_file(tmpdir2, 'example.txt', 'This is an example.')
+			
+		#
+		# Get will get the newest version of a file
+		# 
+		with tempfile.TemporaryDirectory() as tmpdir1, \
+				tempfile.TemporaryDirectory() as tmpdir2, \
+				tempfile.TemporaryDirectory() as tmpdir3:
+					
+			os.chdir(tmpdir1)
+			commandline.run_command(['init'])
+			self.create_file(tmpdir1, 'example.txt', 'This is an example.')
+			commandline.run_command(['commit'])
+			
+			os.chdir(tmpdir2)
+			commandline.run_command(['clone', tmpdir1])
+			commandline.run_command(['get', 'example.txt'])
+			self.check_file(tmpdir2, 'example.txt', 'This is an example.')
+			
+			os.chdir(tmpdir3)
+			commandline.run_command(['clone', tmpdir2])
+			commandline.run_command(['get', 'example.txt'])
+			self.check_file(tmpdir2, 'example.txt', 'This is an example.')
+			
+			os.chdir(tmpdir1)
+			self.create_file(tmpdir1, 'example.txt', 'This is a different text.')
+			commandline.run_command(['commit'])
+			
+			os.chdir(tmpdir3)
+			commandline.run_command(['pull'])
+			commandline.run_command(['get', 'example.txt'])
+			self.check_file(tmpdir3, 'example.txt', 'This is a different text.')
 
 if __name__ == '__main__':
 	logging.basicConfig(level = logging.DEBUG, format = '[{levelname:7s}] {message:s}', style = '{')

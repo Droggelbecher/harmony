@@ -11,8 +11,11 @@ class Remote:
 		self.uri = uri
 		self.repository = repository
 	
+	def get_protocol(self):
+		return protocol.find_protocol(self.uri)
+	
 	def get(self, relpath):
-		p = protocol.find_protocol(self.uri)
+		p = self.get_protocol()
 		p.get_file(self.uri, relpath,
 				os.path.join(self.repository.location, relpath))
 	
