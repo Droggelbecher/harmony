@@ -11,54 +11,10 @@ import os
 import os.path
 import tempfile
 import commandline
+import sys
+from repository import Repository
 
 class TestRepository(unittest.TestCase):
-	
-	def test_lca(self):
-		a = Commit()
-		b = Commit()
-		c = Commit()
-		
-		self.assertEqual(a.lca(a), a)
-		
-		a.parents.add(b)
-		self.assertEqual(a.lca(a), a)
-		self.assertEqual(a.lca(b), b)
-		self.assertEqual(b.lca(a), b)
-		self.assertEqual(b.lca(b), b)
-		
-		b.parents.add(c)
-		self.assertEqual(a.lca(a), a)
-		self.assertEqual(a.lca(b), b)
-		self.assertEqual(b.lca(a), b)
-		self.assertEqual(b.lca(b), b)
-		
-		self.assertEqual(a.lca(c), c)
-		self.assertEqual(b.lca(c), c)
-		self.assertEqual(c.lca(c), c)
-		
-		# TODO: multiple parents, diamonds, etc...
-		
-	def test_merge(self):
-		a = Commit()
-		b = Commit()
-		c, conflicts = a.merge(b)
-		self.assertEqual(len(conflicts), 0)
-		self.assertEqual(set(c.parents), set((a, b)))
-		
-		a = Commit()
-		fia = FileInfo(BytesIO(b"This is foo.txt"))
-		a.add_file('a.txt', fia)
-		
-		b = Commit()
-		fib = FileInfo(BytesIO(b"This is bar.txt"))
-		b.add_file('b.txt', fib)
-		
-		c, conflicts = a.merge(b)
-		self.assertEqual(len(conflicts), 0)
-		self.assertEqual(set(c.parents), set((a, b)))
-		self.assertEqual(c.files['a.txt'], fia)
-		self.assertEqual(c.files['b.txt'], fib)
 	
 	def allfiles(self, directory):
 		r = []
@@ -80,7 +36,7 @@ class TestRepository(unittest.TestCase):
 		self.assertTrue(os.path.isfile(path))
 		with open(path, 'r') as f:
 			self.assertEqual(f.read(), content)
-	
+			
 	def test_init(self):
 		expected_files_after_init = sorted([
 				'.harmony/config',
@@ -157,7 +113,7 @@ class TestRepository(unittest.TestCase):
 				tempfile.TemporaryDirectory() as tmpdir3:
 					
 			os.chdir(tmpdir1)
-			commandline.run_command(['init'])
+			commandline.run_command(['init', '--name', 'repo1'])
 			self.create_file(tmpdir1, 'example.txt', 'This is an example.')
 			commandline.run_command(['commit'])
 			
@@ -176,9 +132,41 @@ class TestRepository(unittest.TestCase):
 			commandline.run_command(['commit'])
 			
 			os.chdir(tmpdir3)
-			commandline.run_command(['pull'])
+			
+			logging.debug(self.allfiles(tmpdir3))
+			
+			commandline.run_command(['pull-state', 'repo1'])
 			commandline.run_command(['get', 'example.txt'])
 			self.check_file(tmpdir3, 'example.txt', 'This is a different text.')
+
+	def test_merge(self):
+		
+		# Case 1: adding files on both sides leads to the union of files
+		# being available in the merged directory
+		with tempfile.TemporaryDirectory() as tmpdir1, \
+				tempfile.TemporaryDirectory() as tmpdir2, \
+				tempfile.TemporaryDirectory() as tmpdir3:
+					
+			os.chdir(tmpdir1)
+			commandline.run_command(['init', '--name', 'repo1'])
+			self.create_file(tmpdir1, 'base.txt', 'This is an example.')
+			commandline.run_command(['commit'])
+			
+			os.chdir(tmpdir2)
+			commandline.run_command(['clone', tmpdir1])
+			self.create_file(tmpdir2, 'dir2.txt', 'Foo.')
+			commandline.run_command(['commit'])
+			
+			os.chdir(tmpdir1)
+			self.create_file(tmpdir1, 'dir1.txt', 'Bar.')
+			commandline.run_command(['commit'])
+			commandline.run_command(['pull-state', 'repo1'])
+			
+			r = Repository(tmpdir1)
+			self.assertIn('dir1.txt', r.available_files())
+			self.assertIn('dir2.txt', r.available_files())
+			self.assertIn('dir1.txt', self.allfiles(tmpdir1))
+			self.assertNotIn('dir2.txt', self.allfiles(tmpdir1))
 
 if __name__ == '__main__':
 	logging.basicConfig(level = logging.DEBUG, format = '[{levelname:7s}] {message:s}', style = '{')
