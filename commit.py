@@ -2,6 +2,7 @@
 from file_info import FileInfo
 import json_encoder
 import datetime
+import logging
 
 from commit_difference import Edit, Deletion, Rename, Creation
 
@@ -12,7 +13,7 @@ class Commit:
 	datetime_format = '%Y-%m-%dT%H:%M:%S.%f'
 	
 	def __init__(self, repo = None):
-		self.parents = set()
+		self.parents_ = set()
 		self.files_ = {}
 		self.by_content_id_ = {}
 		if repo:
@@ -21,8 +22,18 @@ class Commit:
 			self.repository_id = None
 		self.created = datetime.datetime.utcnow()
 		
+	def get_parents(self):
+		return self.parents_
+	
 	def add_parent(self, parent):
-		self.parents.add(parent)
+		assert isinstance(parent, str)
+		self.parents_.add(parent)
+		
+	def set_parents(self, p):
+		for par in p:
+			assert isinstance(par, str)
+			
+		self.parents_ = list(p)
 	
 	def empty(self):
 		return len(self.files_) == 0
@@ -34,7 +45,7 @@ class Commit:
 	def serialize(self):
 		return {
 			'creating_repository': self.repository_id,
-			'parents': self.parents,
+			'parents': self.parents_,
 			'files': self.files_,
 			'created': self.created.strftime(Commit.datetime_format)
 		}
@@ -43,7 +54,7 @@ class Commit:
 	def deserialize(dct):
 		r = Commit()
 		r.repository_id = dct['creating_repository']
-		r.parents = dct['parents']
+		r.parents_ = dct['parents']
 		r.created = datetime.datetime.strptime(dct['created'], Commit.datetime_format)
 		for fname, fi in dct['files'].items():
 			r.add_file(fname, fi)
@@ -57,8 +68,10 @@ class Commit:
 		elif isinstance(change, Rename):
 			self.rename_file(change.old_filename, change.new_filename)
 		elif isinstance(change, Creation):
-			self.add_file(change.new_filename, change, new_fileinfo)
-		assert False
+			self.add_file(change.new_filename, change.new_fileinfo)
+		else:
+			logging.debug("dont know how to apply {}".format(change))
+			assert False
 	
 	def add_file(self, relative_path, fi):
 		# TODO: normalize relative path
@@ -79,6 +92,20 @@ class Commit:
 		self.by_content_id_[cid].discard(from_)
 		self.by_content_id_[cid].add(to)
 		
+	def edit_file(self, filename, new_fileinfo):
+		if filename in self.files_:
+			fi = self.files_[filename]
+			cid = fi.content_id
+			if cid in self.by_content_id_[cid]:
+				self.by_content_id_[cid].discard(filename)
+			if len(self.by_content_id_[cid]) == 0:
+				del self.by_content_id_[cid]
+				
+		self.files_[filename] = new_fileinfo
+		new_cid = new_fileinfo.content_id
+		if new_cid not in self.by_content_id_:
+			self.by_content_id_[new_cid] = set()
+		self.by_content_id_[new_cid].add(filename)
 	
 	def get_filenames(self):
 		return self.files_.keys()
@@ -92,68 +119,6 @@ class Commit:
 	def get_by_content_id(self, content_id):
 		return self.by_content_id_.get(content_id, None).copy()
 	
-	def __lca(self, other):
-		"""
-		Return lowest common ancestor.
-		"""
-		if self == other: return self
-		
-		ancestors_self = set()
-		open_self = set([self])
-		
-		ancestors_other = set()
-		open_other = set([other])
-		
-		while open_self or open_other:
-			new = set()
-			for p in open_self:
-				if p in ancestors_other: return p
-				new.update(p.parents)
-			ancestors_self.update(open_self)
-			open_self = new
-			
-			new = set()
-			for p in open_other:
-				if p in ancestors_self: return p
-				new.update(p.parents)
-			ancestors_other.update(open_other)
-			open_other = new
-		return None
-	
-	def __is_ancestor(self, other):
-		return self.lca(other) == self
-	
-	def __merge(self, other, conflict_resolutions = {}):
-		
-		# Is this a fast-forward?
-		if self.is_ancestor(other): return other.copy(), set()
-		if other.is_ancestor(self): return self.copy(), set()
-		
-		# Non-trivial merge
-		r = Commit()
-		r.parents = (self, other)
-		conflicts = set()
-		
-		filenames = set(self.files_.keys()).union(set(other.files_.keys()))
-		
-		for filename in filenames:
-			if filename not in self.files_:
-				r.files_[filename] = other.files_[filename].copy()
-				
-			elif filename not in other.files_:
-				r.files_[filename] = self.files_[filename].copy()
-				
-			else:
-				here = self.files_[filename]
-				there = other.files_[filename]
-				if here.content_id == there.content_id:
-					r.files_[filename] = here.copy()
-					r.files_[filename].sources.update(there.sources)
-						
-				else:
-					conflicts.add(filename)
-					
-		return r, conflicts
 
 json_encoder.register(Commit)
 

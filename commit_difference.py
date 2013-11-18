@@ -1,4 +1,6 @@
 
+import logging
+
 class Change:
 	old_filename = None
 	new_filename = None
@@ -8,11 +10,14 @@ class Change:
 	
 	def get_source(self):
 		return self.old_filename
+	
+	def __lt__(self, other):
+		return (self.old_filename, self.new_filename) < (other.old_filename, other.new_filename)
 
 class Edit(Change):
 	def __init__(self, filename, fi2):
 		self.new_filename = filename
-		self.new_file_info = fi2
+		self.new_fileinfo = fi2
 		
 	def brief(self):
 		return 'M {}'.format(self.new_filename) 
@@ -96,14 +101,20 @@ class CommitDifference:
 	
 	def get_changes_by_source(self):
 		d = {}
+		logging.debug("get_changes_by_source")
 		for c in self.changes_:
 			t = c.get_source()
-			assert t not in d
-			d[t] = c
+			if t is not None:
+				logging.debug("d[{}] = {}".format(t, c))
+				assert t not in d
+				d[t] = c
 		return d
 	
 	def __add__(self, other):
 		r = CommitDifference(self.c1_, self.c2_)
 		r.changes_ = self.changes_ + other.changes_
 		return r
+	
+	def __getitem__(self, key): return self.changes_.__getitem__(key)
+	def __setitem__(self, key): return self.changes_.__setitem__(key)
 

@@ -160,7 +160,11 @@ class TestRepository(unittest.TestCase):
 			os.chdir(tmpdir1)
 			self.create_file(tmpdir1, 'dir1.txt', 'Bar.')
 			commandline.run_command(['commit'])
+			
+			os.chdir(tmpdir2)
 			commandline.run_command(['pull-state', 'repo1'])
+			print("------")
+			commandline.run_command(['log'])
 			
 			r = Repository(tmpdir1)
 			self.assertIn('dir1.txt', r.available_files())

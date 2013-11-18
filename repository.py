@@ -26,6 +26,10 @@ class Repository:
 		self.load_config()
 		return self.config['id']
 	
+	def get_repository_nickname(self):
+		self.load_config()
+		return self.config['nickname']
+	
 	#
 	# Utility functions
 	# 
@@ -133,11 +137,12 @@ class Repository:
 	# 
 	 
 	def set_head(self, hid):
+		assert isinstance(hid, str)
 		path = os.path.join(self.harmony_dir(), 'HEAD')
 		with open(path, 'w') as f:
 			f.write(hid.strip())
 	
-	def head_id(self, subpath='HEAD'):
+	def get_head_id(self, subpath='HEAD'):
 		path = self.harmony_dir(subpath) #os.path.join(self.harmony_dir(), 'HEAD')
 		if not os.path.exists(path):
 			return None
@@ -146,7 +151,7 @@ class Repository:
 		return r
 	
 	def get_head(self, subpath='HEAD'):
-		return self.get_commit(self.head_id(subpath=subpath))
+		return self.get_commit(self.get_head_id(subpath=subpath))
 	
 	def has_commit(self, commit_id):
 		filepath = self.commit_dir(commit_id)
@@ -169,6 +174,7 @@ class Repository:
 		filepath = self.commit_dir(h)
 		with open(filepath, 'w') as f:
 			f.write(s)
+		self.set_head(h)
 		return h
 	
 	#
@@ -234,7 +240,7 @@ class Repository:
 		"""
 		
 		self.load_remotes()
-		myhead = self.head_id()
+		myhead = self.get_head_id()
 		
 		remote_info = self.get_remote(remote_id)
 		if remote_info is None:
@@ -255,7 +261,8 @@ class Repository:
 		
 		try:
 			proto.get_file(remote.uri, '.harmony/HEAD', tmpfilename)
-			remote_head_id = self.head_id(reltmpfilename)
+			remote_head_id = self.get_head_id(reltmpfilename)
+			logging.debug("remote head={}".format(remote_head_id))
 			xs = set([remote_head_id])
 			
 			# Is the set of remote commits a subset of our commits?
@@ -287,7 +294,7 @@ class Repository:
 						
 				else:
 					proto.get_file(remote.uri, '.harmony/commits/' + x, self.commit_dir(x))
-					xs.update(self.get_commit(x).parents)
+					xs.update(self.get_commit(x).get_parents())
 			
 			if lowest_common_ancestor == myhead:
 				# We are a clean subset of the remote graph,
@@ -317,7 +324,7 @@ class Repository:
 		remote = self.get_commit(remote_id)
 		
 		merge = Commit()
-		merge.parents = (local, remote)
+		merge.set_parents((local_id, remote_id))
 		
 		conflicts = []
 		#diff_local = self.difference(local, base)
@@ -387,7 +394,7 @@ class Repository:
 		sources_l = diff_local.get_changes_by_source()
 		sources_r = diff_remote.get_changes_by_source()
 		
-		for filename in sources_l.union(sources_r):
+		for filename in set(sources_l.keys()).union(sources_r.keys()):
 			l = sources_l.get(filename, None)
 			r = sources_r.get(filename, None)
 			if l != r:
@@ -405,33 +412,42 @@ class Repository:
 					return 1
 				return cmp(c1, c2)
 			
-			diff_both = sorted(diff_local + diff_remote, cmp=cmp_changes)
+			def key_changes(c):
+				# Ensure edits happen before renames, this way if both happen
+				# to the same file, they can be both applied easily
+				if isinstance(c, Edit): return (0, c)
+				elif isinstance(c, Rename): return (1, c)
+				return (2, c)
+				
+			
+			diff_both = sorted(diff_local + diff_remote, key=key_changes)
 			for change in diff_both:
-				merg.apply_change(change)
+				merge.apply_change(change)
 			
-			# rm
-			for filename in set(diff_local['rm']).union(diff_remote['rm']):
-				merge.remove_file(filename)
+			if 0:
+				# rm
+				for filename in set(diff_local['rm']).union(diff_remote['rm']):
+					merge.remove_file(filename)
+					
+				# edit
+				d = dict(diff_local['edit'])
+				for k, v in diff_remote['edit']:
+					if k not in d:
+						d[k] = v.copy()
+					assert d[k].content_id == v.content_id
+					d[k].sources = set(d[k].sources).union(v.sources)
 				
-			# edit
-			d = dict(diff_local['edit'])
-			for k, v in diff_remote['edit']:
-				if k not in d:
-					d[k] = v.copy()
-				assert d[k].content_id == v.content_id
-				d[k].sources = set(d[k].sources).union(v.sources)
-			
-			for filename, fi in d.items():
-				merge.get_file(filename).content_id = fi.content_id
-				merge.get_file(filename).sources = fi.sources
-				
-			# mv
-			for from_, to in diff_local['mv'].items():
-				merge.rename_file(from_, to)
-				
-			# add
-			for from_, to in diff_local['mv'].items():
-				merge.rename_file(from_, to)
+				for filename, fi in d.items():
+					merge.get_file(filename).content_id = fi.content_id
+					merge.get_file(filename).sources = fi.sources
+					
+				# mv
+				for from_, to in diff_local['mv'].items():
+					merge.rename_file(from_, to)
+					
+				# add
+				for from_, to in diff_local['mv'].items():
+					merge.rename_file(from_, to)
 				
 			self.add_commit(merge)
 			
@@ -439,95 +455,6 @@ class Repository:
 		print("-----------XXXX  XXXX-----------------------------------------_")
 		print(conflicts)
 		return conflicts, None
-	
-	def ___merge(self, base_id, local_id, remote_id, conflict_resolutions = {}):
-		"""
-		Merge given commits. If the merge could be executed,
-		the resulting commit is added to the repository and the conflict list
-		will be empty.
-		Else, the commit will not be added and a non-empty conflict list will
-		be returned.
-		
-		Return (conflicts, commit-id)
-		"""
-		
-		# Possible situations:
-		# 
-		# renameL_editR -- rename local, edit remote
-		# renameR_editL -- rename remote, edit local
-		# renameB       -- [C!] rename both
-		# 
-		# addL          -- add local
-		# addR          -- add remote
-		# addB          -- [C?] add on both sides, conflict if content differs
-		# 
-		# editL         -- edit local
-		# editR         -- edit remote
-		# editB         -- [C!] content changed on both sides (filename same,
-		#                  content changed on both sides
-		
-		
-		base = self.get_commit(base_id)
-		local = self.get_commit(local_id)
-		remote = self.get_commit(remote_id)
-		
-		renames_local = self.find_renames(base, local)
-		renames_remote = self.find_renames(base, remote)
-		
-		merge = Commit()
-		merge.parents = (local, remote)
-		conflicts = []
-		
-		filenames = set(local.files.keys()).union(set(remote.files.keys()))
-		for filename in filenames:
-			
-			# filename in ...
-			# loc rem bas
-			# 0   0   0   -- where did we get this filename?
-			# 0   0   1   -- where did we get this filename?
-			# 0   1   0   added remotely -> remote version
-			# 0   1   1   removed locally, ask (remove/keep)
-			# 
-			# 1   0   0   added locally  -> local version
-			# 1   0   1   removed remotely, ask (remove/keep)
-			# 1   1   0   added both sides, if unequal ask (which version)
-			# 1   1   1   available both sides, if one side == base, keep
-			#             other side (as it has the newer change), else ask
-			
-			loc = (filename in local.files)
-			rem = (filename in remote.files)
-			bas = (filename in base.files)
-			t = (loc, rem, bas)
-			
-			if t == (0, 1, 0):
-				merge[filename] = remote.files[filename].copy()
-			elif t == (0, 1, 1):
-				conflicts.append( (filename, 'rm_remote') )
-			elif t == (1, 0, 0):
-				merge[filename] = local.files[filename].copy()
-			elif t == (1, 0, 1):
-				conflicts.append( (filename, 'rm_local') )
-			elif t == (1, 1, 0):
-				here = local.files[filename]
-				there = remote.files[filename]
-				if here.content_id == there.content_id:
-					merge[filename] = local.files[filename].copy()
-				else:
-					conflicts.append( (filename, 'add_both') )
-			elif t == (1, 1, 1):
-				b = base.files[filename]
-				l = local.files[filename]
-				r = remote.files[filename]
-				if l.content_id == b.content_id: merge.files[filename] = r.copy()
-				elif r.content_id == b.content_id: merge.files[filename] = l.copy()
-				else:
-					conflicts.append( (filename, 'change_both') )
-					
-		cid = None
-		if not conflicts:
-			cid = self.add_commit(merge)
-			
-		return conflicts, cid
 	
 	def clone(self, uri):
 		os.makedirs(self.harmony_dir())
@@ -566,7 +493,7 @@ class Repository:
 	def commit(self):
 		c = Commit(self)
 		
-		parent_id = self.head_id()
+		parent_id = self.get_head_id()
 		
 		# Copy states from parent
 		
@@ -618,7 +545,7 @@ class Repository:
 			logging.info('nothing to commit')
 		
 	def get_sources(self, relpath):
-		cid = self.head_id()
+		cid = self.get_head_id()
 		if cid is not None:
 			c = self.get_commit(cid)
 			f = c.get_file(relpath)
@@ -655,31 +582,34 @@ class Repository:
 	def cmd_log(self):
 		h = self.get_history()
 		for cid, commit in h:
-			print('{:8s} {:%Y-%m-%d %H:%M} {:8s} {:8s} {}'.format(
-				cid[-8:], commit.created,
-				commit.parents[0][-8:] if len(commit.parents) >= 1 else '',
-				commit.parents[1][-8:] if len(commit.parents) >= 2 else '',
+			print('commit {:8s} parents {:8s} {:8s}'.format(
+				cid[-8:],
+				commit.get_parents()[0][-8:] if len(commit.get_parents()) >= 1 else '',
+				commit.get_parents()[1][-8:] if len(commit.get_parents()) >= 2 else ''
+			))
+			
+			print('created {:%Y-%m-%d %H:%M} in {}'.format(commit.created,
 				commit.repository_id))
 			
 			#for p in commit.parents:
 				#print("  p {}".format(p[-8:]))
 				
-			if len(commit.parents) == 0:
+			if len(commit.get_parents()) == 0:
 				for filename in commit.get_filenames():
 					print('  A {}'.format(filename))
-			elif len(commit.parents) == 1:
+			elif len(commit.get_parents()) == 1:
 				# TODO: this unecessarily reads the parent commit from disk
 				# (do we care?).
-				d = CommitDifference(self.get_commit(commit.parents[0]), commit)
+				d = CommitDifference(self.get_commit(commit.get_parents()[0]), commit)
 				for change in d.get_changes():
 					print('  {}'.format(change.brief()))
-			elif len(commit.parents) == 2:
+			elif len(commit.get_parents()) == 2:
 				print('  (merge)')
 			print()
-	
+			
 	def get_history(self):
 		history = []
-		c = self.head_id()
+		c = self.get_head_id()
 		branches = set([(c, self.get_commit(c))])
 		
 		while branches:
@@ -693,8 +623,8 @@ class Repository:
 			branches.discard((max_commit_id, max_commit))
 			history.append((max_commit_id, max_commit))
 			
-			for cid in max_commit.parents:
+			for cid in max_commit.get_parents():
 				branches.add((cid, self.get_commit(cid)))
 		return history
-			
+	
 	

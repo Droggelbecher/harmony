@@ -5,6 +5,12 @@ from repository import Repository
 import logging
 import argparse
 
+def cmd_info(repo):
+	print('repository {}\nnickname {}\nHEAD {}'.format(
+		repo.get_repository_id(),
+		repo.get_repository_nickname(),
+		repo.get_head_id()))
+	
 def run_command(args):
 	
 	commands = {
@@ -48,6 +54,9 @@ def run_command(args):
 	
 	p_log = subparsers.add_parser('log', help='list commits')
 	p_log.set_defaults(func=Repository.cmd_log, func_args=[])
+	
+	p_info = subparsers.add_parser('info', help='info about repo')
+	p_info.set_defaults(func=cmd_info, func_args=[])
 	
 	ns = parser.parse_args(args)
 	repository = Repository(ns.harmony_dir)
