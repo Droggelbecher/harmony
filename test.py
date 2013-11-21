@@ -163,15 +163,28 @@ class TestRepository(unittest.TestCase):
 			
 			os.chdir(tmpdir2)
 			commandline.run_command(['pull-state', 'repo1'])
-			print("------")
 			commandline.run_command(['log'])
 			
 			r = Repository(tmpdir1)
+			self.assertIn('base.txt', r.available_files())
 			self.assertIn('dir1.txt', r.available_files())
-			self.assertIn('dir2.txt', r.available_files())
+			self.assertNotIn('dir2.txt', r.available_files())
+			
+			self.assertIn('base.txt', self.allfiles(tmpdir1))
 			self.assertIn('dir1.txt', self.allfiles(tmpdir1))
 			self.assertNotIn('dir2.txt', self.allfiles(tmpdir1))
-
+			
+			r = Repository(tmpdir2)
+			self.assertIn('base.txt', r.available_files())
+			self.assertIn('dir1.txt', r.available_files())
+			self.assertIn('dir2.txt', r.available_files())
+			
+			self.assertNotIn('base.txt', self.allfiles(tmpdir2))
+			self.assertNotIn('dir1.txt', self.allfiles(tmpdir2))
+			self.assertIn('dir2.txt', self.allfiles(tmpdir2))
+			
+		
+		
 if __name__ == '__main__':
 	logging.basicConfig(level = logging.DEBUG, format = '[{levelname:7s}] {message:s}', style = '{')
 	unittest.main()

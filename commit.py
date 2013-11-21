@@ -22,6 +22,11 @@ class Commit:
 			self.repository_id = None
 		self.created = datetime.datetime.utcnow()
 		
+	def add_files_from(self, commit):
+		for fn in commit.get_filenames():
+			fi = commit.get_file(fn)
+			self.add_file(fn, fi)
+		
 	def get_parents(self):
 		return self.parents_
 	

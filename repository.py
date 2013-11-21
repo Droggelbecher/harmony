@@ -16,6 +16,7 @@ from file_info import FileInfo
 from commit import Commit
 from remote import Remote
 from commit_difference import CommitDifference, Edit, Deletion, Rename, Creation
+from conflict import Conflict
 
 class Repository:
 	
@@ -62,8 +63,8 @@ class Repository:
 	def remote_dir(self, name):
 		return os.path.join(self.harmony_dir, 'remotes', name)
 	
-	def temp_dir(self):
-		return self.harmony_dir('tmp')
+	def temp_dir(self, subpath = ''):
+		return os.path.join(self.harmony_dir('tmp'), subpath)
 		
 	def commit_dir(self, c=''):
 		return self.harmony_dir(os.path.join('commits', c))
@@ -188,6 +189,10 @@ class Repository:
 				for k, v in self.remotes.items():
 					if v['nickname'] == remote_id:
 						return Remote(self, k, v['uri'], v['nickname'])
+					
+			#for k, v in self.remotes.items():
+				#if Remote.equivalent_uri(remote_id, v['uri']):
+			return Remote(self, '0', remote_id, '_direct')
 			
 			return None
 		d = self.remotes[remote_id]
@@ -253,16 +258,13 @@ class Repository:
 		remote = self.get_remote(remote_id)
 		proto = remote.get_protocol()
 		
-		logging.debug("tmpdir={} ".format(self.temp_dir()))
 		tmpfilehandle, tmpfilename = tempfile.mkstemp(dir = self.temp_dir())
 		reltmpfilename = self.relpath_hd(tmpfilename)
-		logging.debug("tmpfilename={} reltmpfilename={}".format(tmpfilename, reltmpfilename))
 		os.close(tmpfilehandle)
 		
 		try:
 			proto.get_file(remote.uri, '.harmony/HEAD', tmpfilename)
 			remote_head_id = self.get_head_id(reltmpfilename)
-			logging.debug("remote head={}".format(remote_head_id))
 			xs = set([remote_head_id])
 			
 			# Is the set of remote commits a subset of our commits?
@@ -312,6 +314,11 @@ class Repository:
 						base_id = lowest_common_ancestor,
 						local_id = myhead,
 						remote_id = remote_head_id)
+				if conflicts:
+					print("Automatic merge failed.")
+					for conflict in conflicts:
+						print(conflict)
+					
 				logging.info("Merge.")
 				return conflicts, commit_id
 			
@@ -323,8 +330,10 @@ class Repository:
 		local = self.get_commit(local_id)
 		remote = self.get_commit(remote_id)
 		
-		merge = Commit()
+		merge = Commit(self)
 		merge.set_parents((local_id, remote_id))
+		merge.add_files_from(local)
+		merge.add_files_from(remote)
 		
 		conflicts = []
 		#diff_local = self.difference(local, base)
@@ -424,36 +433,8 @@ class Repository:
 			for change in diff_both:
 				merge.apply_change(change)
 			
-			if 0:
-				# rm
-				for filename in set(diff_local['rm']).union(diff_remote['rm']):
-					merge.remove_file(filename)
-					
-				# edit
-				d = dict(diff_local['edit'])
-				for k, v in diff_remote['edit']:
-					if k not in d:
-						d[k] = v.copy()
-					assert d[k].content_id == v.content_id
-					d[k].sources = set(d[k].sources).union(v.sources)
-				
-				for filename, fi in d.items():
-					merge.get_file(filename).content_id = fi.content_id
-					merge.get_file(filename).sources = fi.sources
-					
-				# mv
-				for from_, to in diff_local['mv'].items():
-					merge.rename_file(from_, to)
-					
-				# add
-				for from_, to in diff_local['mv'].items():
-					merge.rename_file(from_, to)
-				
 			self.add_commit(merge)
-			
 		
-		print("-----------XXXX  XXXX-----------------------------------------_")
-		print(conflicts)
 		return conflicts, None
 	
 	def clone(self, uri):
@@ -500,7 +481,8 @@ class Repository:
 		if parent_id is not None:
 			c.add_parent(parent_id)
 			parent = self.get_commit(parent_id)
-			c.files_ = parent.files_.copy()
+			#c.files_ = parent.files_.copy()
+			c.add_files_from(parent)
 		
 		# Add/update files from working dir
 		
@@ -513,8 +495,6 @@ class Repository:
 				with open(relfn, 'rb') as f:
 					new_fi = FileInfo(f)
 				fi = None
-				logging.info('relfn={} filenames={}'.format(relfn,
-					c.get_filenames()))
 				if relfn in c.get_filenames():
 					prev_fi = c.get_file(relfn)
 					fi = c.get_file(relfn)

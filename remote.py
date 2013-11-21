@@ -3,6 +3,8 @@ import os
 import logging
 
 import protocol
+import os
+import os.path
 
 class Remote:
 	def __init__(self, repository, remote_id, uri, nickname):
@@ -18,4 +20,20 @@ class Remote:
 		p = self.get_protocol()
 		p.get_file(self.uri, relpath,
 				os.path.join(self.repository.location, relpath))
+		
+	@staticmethod
+	def equivalent_uri(a, b):
+		a_proto, a_uri = protocol.split_uri(a)
+		b_proto, b_uri = protocol.split_uri(b)
+		
+		if a_proto == '': a_proto = protocol.DEFAULT_PROTOCOL
+		if b_proto == '': b_proto = protocol.DEFAULT_PROTOCOL
+		
+		if a_proto != b_proto: return False
+		
+		logging.debug(os.path.abspath(a_uri))
+		logging.debug(os.path.abspath(b_uri))
+		
+		return os.path.abspath(a_uri) == os.path.abspath(b_uri)
+		
 	

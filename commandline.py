@@ -10,6 +10,25 @@ def cmd_info(repo):
 		repo.get_repository_id(),
 		repo.get_repository_nickname(),
 		repo.get_head_id()))
+
+def cmd_pull_state(repo, remote_id, resolve_file=None):
+	conflicts, commit_id = repo.pull_state(remote_id)
+	
+	if conflicts:
+		conflict_filename = repo.temp_dir('conflicts')
+		with open(conflict_filename, 'w') as f:
+			f.write('# local : "{}" {}\n'.format(repo.get_repository_nickname(),
+				repo.get_repository_id()))
+			f.write('# remote: "{}" {} at {}\n'.format(
+				repo.get_remote(remote_id).nickname,
+				repo.get_remote(remote_id).remote_id,
+				repo.get_remote(remote_id).uri))
+			for conflict in conflicts:
+				f.write('[ ] local: {} remote: {}\n'.format(
+					conflict.local_change.brief(),
+					conflict.remote_change.brief()))
+		
+		print('conflicts during merge. edit .harmony/tmp/conflicts and run "resolve"')
 	
 def run_command(args):
 	
@@ -50,7 +69,7 @@ def run_command(args):
 	
 	p_pull_state = subparsers.add_parser('pull-state', help='pull state from all available remotes')
 	p_pull_state.add_argument('remote', help='ID or nickname of the remote to pull from')
-	p_pull_state.set_defaults(func=Repository.pull_state, func_args=['remote'])
+	p_pull_state.set_defaults(func=cmd_pull_state, func_args=['remote'])
 	
 	p_log = subparsers.add_parser('log', help='list commits')
 	p_log.set_defaults(func=Repository.cmd_log, func_args=[])

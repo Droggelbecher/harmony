@@ -101,11 +101,11 @@ class CommitDifference:
 	
 	def get_changes_by_source(self):
 		d = {}
-		logging.debug("get_changes_by_source")
+		#logging.debug("get_changes_by_source")
 		for c in self.changes_:
 			t = c.get_source()
 			if t is not None:
-				logging.debug("d[{}] = {}".format(t, c))
+				#logging.debug("d[{}] = {}".format(t, c))
 				assert t not in d
 				d[t] = c
 		return d
