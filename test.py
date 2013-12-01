@@ -1,5 +1,4 @@
 
-
 import random
 import unittest
 import logging
@@ -183,9 +182,27 @@ class TestRepository(unittest.TestCase):
 			self.assertNotIn('dir1.txt', self.allfiles(tmpdir2))
 			self.assertIn('dir2.txt', self.allfiles(tmpdir2))
 			
+	def test_rm(self):
+		"""
+		Harmony can decide cleanly between the following file states:
 		
+		(a) not tracked: The file is not tracked at all. An appearance in the
+		working directory will lead to an addition into the repository.
+		
+		(b) not here: The file is not present in the local copy, but
+		its known to the repository.
+		An appearance in the working dir will most likely result in a merge
+		conflict.
+		
+		(c) removed: The file should be there locally, but was removed from
+		the working dir.
+		This will lead to the file becoming locally untracked and, if it was
+		the last copy, completely untracked.
+		"""
 		
 if __name__ == '__main__':
 	logging.basicConfig(level = logging.DEBUG, format = '[{levelname:7s}] {message:s}', style = '{')
 	unittest.main()
+
+# vim: set ts=4 sw=4 tw=78 noexpandtab :
 

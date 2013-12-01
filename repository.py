@@ -484,14 +484,22 @@ class Repository:
 			#c.files_ = parent.files_.copy()
 			c.add_files_from(parent)
 		
-		# Add/update files from working dir
-		
 		changed = False
+		seen_files = set()
+		
+		# Add/update files from working dir
+		# {{{
+		
 		for root, dirs, files in os.walk(self.location):
 			for filename in files:
 				absfn = os.path.join(root, filename)
 				relfn = self.relpath_wd(absfn)
+				seen_files.add(relfn)
+				
+				# TODO
 				rules = self.get_rules(relfn)
+				rule = ...
+				
 				with open(relfn, 'rb') as f:
 					new_fi = FileInfo(f)
 				fi = None
@@ -499,25 +507,76 @@ class Repository:
 					prev_fi = c.get_file(relfn)
 					fi = c.get_file(relfn)
 				
-				if 'ignore' in rules:
+				if not rule.add_untrack:
 					logging.debug('ignoring {}'.format(relfn))
 					if fi and new_fi.content_id != fi.content_id:
 						logging.warn('local version of ignored file {} differs from repo version'.format(relfn))
 						
 				else:
-					if fi and new_fi.content_id != fi.content_id:
-						changed = True
-						logging.info('updated {}'.format(relfn))
-						new_fi.action = 'updated'
-						new_fi.sources.add(self.get_repository_id())
-						c.add_file(relfn, new_fi)
-					
-					elif not fi:
+					if fi:
+						# File is tracked
+						if self.get_repository_id() in fi.sources:
+							if not rule.commit_tracked:
+								logging.debug('ignoring tracked file {}'.format(relfn))
+								continue
+							
+							# File is supposed to be in present in the working
+							# directory
+							if new_fi.content_id != fi.content_id:
+								# File content has changed 
+								changed = True
+								logging.info('updated {}'.format(relfn))
+								new_fi.action = 'updated'
+								new_fi.sources.add(self.get_repository_id())
+								c.add_file(relfn, new_fi)
+								
+							# else: file has not changed, nothing to do
+						else:
+							# File is tracked but not expected in this working
+							# directory (nonlocal).
+							if not rule.commit_nonlocal_tracked:
+								logging.debug('ignoring nonlocal tracked file {}'.format(relfn))
+								continue
+							
+							if new_fi.content_id != fi.content_id:
+								# File content has changed 
+								changed = True
+								logging.info('updated nonlocal {}'.format(relfn))
+								new_fi.action = 'updated'
+								new_fi.sources.add(self.get_repository_id())
+								c.add_file(relfn, new_fi)
+								
+					else:
+						if not rule.commit_untracked:
+							logging.debug('ignoring untracked file {}'.format(relfn))
+							continue
+						# File is not tracked
 						changed = True
 						logging.info('created {}'.format(relfn))
 						new_fi.action = 'created'
 						new_fi.sources.add(self.get_repository_id())
 						c.add_file(relfn, new_fi)
+		# }}}
+		
+		# Handle deletions
+		deletions = set(c.get_filenames()).difference(seen_files)
+		
+		for relfn in deletions:
+			fi = None
+			if relfn in c.get_filenames():
+				prev_fi = c.get_file(relfn)
+				fi = c.get_file(relfn)
+			if fi and self.get_repository_id() in fi.sources:
+				new_fi = fi.copy()
+				new_fi.sources.discard(relfn)
+				if not new_fi:
+					logging.info('exterminated {}'.format(relfn))
+					c.delete_file(relfn)
+				else:
+					logging.info('deleted {}'.format(relfn))
+					c.edit_file(relfn, new_fi)
+				changed = True
+		
 		if changed:
 			commit_id = self.add_commit(c)
 			self.set_head(commit_id)
