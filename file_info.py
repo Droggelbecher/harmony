@@ -25,7 +25,7 @@ class FileInfo:
 	def deserialize(dct):
 		r = FileInfo()
 		r.content_id = dct['content_id']
-		r.sources = dct['sources']
+		r.sources = set(dct['sources'])
 		r.action = dct.get('action', None)
 		return r
 		

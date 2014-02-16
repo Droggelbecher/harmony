@@ -1,3 +1,4 @@
+# vim: set ts=4 sw=4 noexpandtab:
 
 import os
 import os.path
@@ -18,10 +19,13 @@ from remote import Remote
 from commit_difference import CommitDifference, Edit, Deletion, Rename, Creation
 from conflict import Conflict
 
+import configuration
+
 class Repository:
 	
 	def __init__(self, location):
 		self.location = os.path.normpath(os.path.abspath(location))
+		self.configuration = configuration.Configuration(self.relpath_hd())
 	
 	def get_repository_id(self):
 		self.load_config()
@@ -44,7 +48,7 @@ class Repository:
 				os.path.abspath(self.location))
 		return relpath
 	
-	def relpath_hd(self, path):
+	def relpath_hd(self, path = ''):
 		"""
 		Return version of path that is relative to the harmony directory
 		(self.harmony_dir())
@@ -115,23 +119,7 @@ class Repository:
 	# File rules
 	# 
 	
-	def pattern_match(self, pattern, path):
-		return fnmatch.fnmatch(path, pattern)
-	
-	def get_rules(self, p):
-		relative_path = self.relpath_wd(p)
-		
-		self.load_rules()
-		for r in self.rules['rules']:
-			if self.pattern_match(r['pattern'], relative_path):
-				return r['rules']
-		
-		# implicit rules:
-		# ignore .harmony/
-		if self.pattern_match('.harmony/*', relative_path):
-			return ['ignore']
-		
-		return []
+	def get_rules(self, p): return self.configuration.get_rules()
 	
 	#
 	# History
@@ -214,7 +202,9 @@ class Repository:
 			#for filename, conflict_type in conflicts:
 				#print("CONFLICT: {} {}
 	
-	
+
+	# TODO: do all configuration stuff via the configuration module	
+
 	def make_config(self, nickname = None):
 		self.load_config()
 		# TODO: don't do this if a config already exists!
@@ -495,67 +485,67 @@ class Repository:
 				absfn = os.path.join(root, filename)
 				relfn = self.relpath_wd(absfn)
 				seen_files.add(relfn)
-				
-				# TODO
-				rules = self.get_rules(relfn)
-				rule = ...
-				
+
+				rule = self.configuration.get_rule(self, relfn)
 				with open(relfn, 'rb') as f:
 					new_fi = FileInfo(f)
 				fi = None
+
+				# See whether this file is already being tracked 
+				#
 				if relfn in c.get_filenames():
 					prev_fi = c.get_file(relfn)
 					fi = c.get_file(relfn)
-				
-				if not rule.add_untrack:
-					logging.debug('ignoring {}'.format(relfn))
-					if fi and new_fi.content_id != fi.content_id:
-						logging.warn('local version of ignored file {} differs from repo version'.format(relfn))
+
+				#if not rule.add_untrack:
+					#logging.debug('ignoring {}'.format(relfn))
+					#if fi and new_fi.content_id != fi.content_id:
+						#logging.warn('local version of ignored file {} differs from repo version'.format(relfn))
 						
-				else:
-					if fi:
-						# File is tracked
-						if self.get_repository_id() in fi.sources:
-							if not rule.commit_tracked:
-								logging.debug('ignoring tracked file {}'.format(relfn))
-								continue
-							
-							# File is supposed to be in present in the working
-							# directory
-							if new_fi.content_id != fi.content_id:
-								# File content has changed 
-								changed = True
-								logging.info('updated {}'.format(relfn))
-								new_fi.action = 'updated'
-								new_fi.sources.add(self.get_repository_id())
-								c.add_file(relfn, new_fi)
-								
-							# else: file has not changed, nothing to do
-						else:
-							# File is tracked but not expected in this working
-							# directory (nonlocal).
-							if not rule.commit_nonlocal_tracked:
-								logging.debug('ignoring nonlocal tracked file {}'.format(relfn))
-								continue
-							
-							if new_fi.content_id != fi.content_id:
-								# File content has changed 
-								changed = True
-								logging.info('updated nonlocal {}'.format(relfn))
-								new_fi.action = 'updated'
-								new_fi.sources.add(self.get_repository_id())
-								c.add_file(relfn, new_fi)
-								
-					else:
-						if not rule.commit_untracked:
-							logging.debug('ignoring untracked file {}'.format(relfn))
+				#else:
+				if fi:
+					# File is tracked
+					if self.get_repository_id() in fi.sources:
+						if not rule.commit_tracked:
+							logging.debug('ignoring tracked file {}'.format(relfn))
 							continue
-						# File is not tracked
-						changed = True
-						logging.info('created {}'.format(relfn))
-						new_fi.action = 'created'
-						new_fi.sources.add(self.get_repository_id())
-						c.add_file(relfn, new_fi)
+						
+						# File is supposed to be in present in the working
+						# directory
+						if new_fi.content_id != fi.content_id:
+							# File content has changed 
+							changed = True
+							logging.info('updated {}'.format(relfn))
+							new_fi.action = 'updated'
+							new_fi.sources.add(self.get_repository_id())
+							c.add_file(relfn, new_fi)
+							
+						# else: file has not changed, nothing to do
+					else:
+						# File is tracked but not expected in this working
+						# directory (nonlocal).
+						if not rule.commit_nonlocal_tracked:
+							logging.debug('ignoring nonlocal tracked file {}'.format(relfn))
+							continue
+						
+						if new_fi.content_id != fi.content_id:
+							# File content has changed 
+							changed = True
+							logging.info('updated nonlocal {}'.format(relfn))
+							new_fi.action = 'updated'
+							new_fi.sources.add(self.get_repository_id())
+							c.add_file(relfn, new_fi)
+							
+				else:
+					# File is untracked
+					if not rule.commit_untracked:
+						logging.debug('ignoring untracked file {}'.format(relfn))
+						continue
+					changed = True
+					logging.info('created {}'.format(relfn))
+					new_fi.action = 'created'
+					new_fi.sources.add(self.get_repository_id())
+					c.add_file(relfn, new_fi)
 		# }}}
 		
 		# Handle deletions
@@ -566,14 +556,19 @@ class Repository:
 			if relfn in c.get_filenames():
 				prev_fi = c.get_file(relfn)
 				fi = c.get_file(relfn)
+
 			if fi and self.get_repository_id() in fi.sources:
+				#
+				# Build the new info block for this file,
+				# copy from the old one, but we are not a source anymore.
+				#
 				new_fi = fi.copy()
-				new_fi.sources.discard(relfn)
-				if not new_fi:
-					logging.info('exterminated {}'.format(relfn))
+				new_fi.sources.discard(self.get_repository_id())
+				if not new_fi.sources:
+					logging.info('exterminated "{}" (no sources left)'.format(relfn))
 					c.delete_file(relfn)
 				else:
-					logging.info('deleted {}'.format(relfn))
+					logging.info('deleted "{}" ({} sources left)'.format(relfn, len(new_fi.sources)))
 					c.edit_file(relfn, new_fi)
 				changed = True
 		
@@ -605,16 +600,42 @@ class Repository:
 			logging.info('{} not found in repository'.format(relpath))
 			
 	def get(self, relpath):
+		# TODO: should we get the newest version of the file (and make a new
+		# commit)
+		# or the one that matches our HEAD?
+		# -> at the very least we should warn if we find newer versions are
+		# out there than the one we are requesting
+		# -> not implicitely committing sounds more deterministic
+
 		for src in self.get_sources(relpath):
 			remote = self.get_remote(src)
 			if src is None:
 				logging.warning('no info available about remote {}, ignoring'.format(s))
 				continue
 			remote.get(relpath)
+			
+			# this sucks.
+			# Remote-commiting doesnt sound like a good idea,
+			# not communicating the state is counterintuitive as well.
+			# What is the way to go here?
+			
+			# TODO: Let remote repository know, we got a copy of this file
+			if remote.is_writeable():
+				# TODO: add new commit with updated source
+				XXX
+			else:
+				logging.warning('remote {} is not writable, the other end will not realize we have a copy until it pulls from us!',
+remote)
+				
+				
 			return
 		logging.error('no remote found to provide {}'.format(relpath))
 	
 	def available_files(self):
+		"""
+		Return all files that were known/assumed
+		to exist in the last commit (HEAD)
+		"""
 		head = self.get_head()
 		return head.get_filenames()
 	

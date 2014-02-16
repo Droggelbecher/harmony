@@ -15,6 +15,13 @@ from repository import Repository
 
 class TestRepository(unittest.TestCase):
 	
+	# Some convenience method to enhance
+	# readability of tests
+
+	def cd(self, d): os.chdir(d)
+	def rm(self, fn): os.remove(fn)
+	def harmony(self, *args): commandline.run_command(args)
+
 	def allfiles(self, directory):
 		r = []
 		for root, dirs, files in os.walk(directory):
@@ -23,6 +30,11 @@ class TestRepository(unittest.TestCase):
 				relpath = os.path.relpath(os.path.abspath(abspath), os.path.abspath(directory))
 				r.append(relpath)
 		return sorted(r)
+
+	def assert_in_dir(self, fn, d): self.assertIn(fn, self.allfiles(d))
+	def assert_in_repo(self, fn, d): self.assertIn(fn, Repository(d).available_files())
+	def assert_not_in_dir(self, fn, d): self.assertNotIn(fn, self.allfiles(d))
+	def assert_not_in_repo(self, fn, d): self.assertNotIn(fn, Repository(d).available_files())
 	
 	def create_file(self, dirname, fname, content = ''):
 		with open(os.path.join(dirname, fname), 'w') as f:
@@ -35,6 +47,13 @@ class TestRepository(unittest.TestCase):
 		self.assertTrue(os.path.isfile(path))
 		with open(path, 'r') as f:
 			self.assertEqual(f.read(), content)
+
+	def tmpdir(self): return tempfile.TemporaryDirectory()
+
+	#
+	# Actual tests
+	#
+
 			
 	def test_init(self):
 		expected_files_after_init = sorted([
@@ -139,6 +158,7 @@ class TestRepository(unittest.TestCase):
 			self.check_file(tmpdir3, 'example.txt', 'This is a different text.')
 
 	def test_merge(self):
+		logging.debug("----- test merge")
 		
 		# Case 1: adding files on both sides leads to the union of files
 		# being available in the merged directory
@@ -199,6 +219,68 @@ class TestRepository(unittest.TestCase):
 		This will lead to the file becoming locally untracked and, if it was
 		the last copy, completely untracked.
 		"""
+		
+		# 
+		# Singe repository instance,
+		# create a file, commit, delete it, commit again.
+		# The file should not appear in the list of tracked files anymore.
+		#
+		with self.tmpdir() as D1:
+			
+			self.cd(D1)
+			self.harmony('init', '--name', 'repo1')
+			self.create_file(D1, 'hellogoodbye.txt', 'You say yes, I say no.')
+			self.harmony('commit')
+			
+			self.assert_in_dir('hellogoodbye.txt', D1)
+			self.assert_in_repo('hellogoodbye.txt', D1)
+
+			self.rm('hellogoodbye.txt')
+			self.assert_not_in_dir('hellogoodbye.txt', D1)
+			self.assert_in_repo('hellogoodbye.txt', D1)
+
+			self.harmony('commit')
+			self.assert_not_in_dir('hellogoodbye.txt', D1)
+			self.assert_not_in_repo('hellogoodbye.txt', D1)
+
+		#
+		# Two repo instances,
+		# create file, commit, sync, delete, commit again.
+		# The file should still be considered tracked with 1 source.
+		#
+		# That is, get reports to the repo it copied from!
+		#
+		with self.tmpdir() as D1, self.tmpdir() as D2:
+
+			self.cd(D1)
+			self.harmony('init', '--name', 'repo1')
+			self.create_file(D1, 'hellogoodbye.txt', 'You say yes, I say no.')
+			self.harmony('commit')
+			
+			self.assert_in_dir('hellogoodbye.txt', D1)
+			self.assert_in_repo('hellogoodbye.txt', D1)
+
+			self.cd(D2)
+			self.harmony('clone', D1)
+			self.harmony('get', 'hellogoodbye.txt')
+			self.check_file(D2, 'hellogoodbye.txt', 'You say yes, I say no.')
+			
+			self.assert_in_dir('hellogoodbye.txt', D2)
+			self.assert_in_repo('hellogoodbye.txt', D2)
+
+			self.cd(D1)
+			self.rm('hellogoodbye.txt')
+			self.assert_not_in_dir('hellogoodbye.txt', D1)
+			self.assert_in_repo('hellogoodbye.txt', D1)
+
+			self.harmony('commit')
+			self.assert_not_in_dir('hellogoodbye.txt', D1)
+			self.assert_in_repo('hellogoodbye.txt', D1)
+
+			self.harmony('get', 'hellogoodbye.txt')
+			self.assert_in_dir('hellogoodbye.txt', D1)
+			self.assert_in_repo('hellogoodbye.txt', D1)
+			
 		
 if __name__ == '__main__':
 	logging.basicConfig(level = logging.DEBUG, format = '[{levelname:7s}] {message:s}', style = '{')
