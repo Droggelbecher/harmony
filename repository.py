@@ -20,12 +20,158 @@ from commit_difference import CommitDifference, Edit, Deletion, Rename, Creation
 from conflict import Conflict
 
 import configuration
+import history
 
 class Repository:
 	
 	def __init__(self, location):
 		self.location = os.path.normpath(os.path.abspath(location))
 		self.configuration = configuration.Configuration(self.relpath_hd())
+		self.history = history.History(self)
+		self.rules = rules.Rules(self)
+
+	def id(self):
+		return self.configuration.get('id')
+
+	def name(self):
+		return self.configuration.get('name')
+
+	def head(self):
+		return self.history.head()
+
+
+	def commit(self):
+		"""
+		Commit the working dir state to the history, moving HEAD.
+		"""
+		#c = Commit(self)
+		
+		#parent_id = self.get_head_id()
+		
+		## Copy states from parent
+		
+		#if parent_id is not None:
+			#c.add_parent(parent_id)
+			#parent = self.get_commit(parent_id)
+			#c.add_files_from(parent)
+		
+		c = self.history.create_commit(on_top = True)
+		
+		changed = False
+		seen_files = set()
+		
+		# Add/update files from working dir
+		# {{{
+		
+		for root, dirs, files in os.walk(self.location):
+			for filename in files:
+				absfn = os.path.join(root, filename)
+				relfn = self.relpath_wd(absfn)
+				seen_files.add(relfn)
+
+				rule = self.rules.get(relfn)
+				with open(relfn, 'rb') as f:
+					new_fi = FileInfo(f)
+				fi = None
+
+				# See whether this file is already being tracked 
+				#
+				if relfn in c.get_filenames():
+					prev_fi = c.get_file(relfn)
+					fi = c.get_file(relfn)
+
+				if fi:
+					# File is tracked
+					if self.get_repository_id() in fi.sources:
+						if not rule.commit_tracked:
+							logging.debug('ignoring tracked file {}'.format(relfn))
+							continue
+						
+						# File is supposed to be in present in the working
+						# directory
+						if new_fi.content_id != fi.content_id:
+							# File content has changed 
+							changed = True
+							logging.info('updated {}'.format(relfn))
+							new_fi.action = 'updated'
+							new_fi.sources.add(self.get_repository_id())
+							c.add_file(relfn, new_fi)
+							
+						# else: file has not changed, nothing to do
+					else:
+						# File is tracked but not expected in this working
+						# directory (nonlocal).
+						if not rule.commit_nonlocal_tracked:
+							logging.debug('ignoring nonlocal tracked file {}'.format(relfn))
+							continue
+						
+						if new_fi.content_id != fi.content_id:
+							# File content has changed 
+							changed = True
+							logging.info('updated nonlocal {}'.format(relfn))
+							new_fi.action = 'updated'
+							new_fi.sources.add(self.get_repository_id())
+							c.add_file(relfn, new_fi)
+							
+				else:
+					# File is untracked
+					if not rule.commit_untracked:
+						logging.debug('ignoring untracked file {}'.format(relfn))
+						continue
+					changed = True
+					logging.info('created {}'.format(relfn))
+					new_fi.action = 'created'
+					new_fi.sources.add(self.get_repository_id())
+					c.add_file(relfn, new_fi)
+		# }}}
+		
+		# Handle deletions
+		deletions = set(c.get_filenames()).difference(seen_files)
+		
+		for relfn in deletions:
+			fi = None
+			if relfn in c.get_filenames():
+				prev_fi = c.get_file(relfn)
+				fi = c.get_file(relfn)
+
+			if fi and self.get_repository_id() in fi.sources:
+				#
+				# Build the new info block for this file,
+				# copy from the old one, but we are not a source anymore.
+				#
+				new_fi = fi.copy()
+				new_fi.sources.discard(self.get_repository_id())
+				if not new_fi.sources:
+					logging.info('exterminated "{}" (no sources left)'.format(relfn))
+					c.delete_file(relfn)
+				else:
+					logging.info('deleted "{}" ({} sources left)'.format(relfn, len(new_fi.sources)))
+					c.edit_file(relfn, new_fi)
+				changed = True
+		
+		if changed:
+			commit_id = self.add_commit(c)
+			self.set_head(commit_id)
+		else:
+			logging.info('nothing to commit')
+		
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 	
 	def get_repository_id(self):
 		self.load_config()
@@ -125,46 +271,46 @@ class Repository:
 	# History
 	# 
 	 
-	def set_head(self, hid):
-		assert isinstance(hid, str)
-		path = os.path.join(self.harmony_dir(), 'HEAD')
-		with open(path, 'w') as f:
-			f.write(hid.strip())
+	#def set_head(self, hid):
+		#assert isinstance(hid, str)
+		#path = os.path.join(self.harmony_dir(), 'HEAD')
+		#with open(path, 'w') as f:
+			#f.write(hid.strip())
 	
-	def get_head_id(self, subpath='HEAD'):
-		path = self.harmony_dir(subpath) #os.path.join(self.harmony_dir(), 'HEAD')
-		if not os.path.exists(path):
-			return None
-		with open(path, 'r') as f:
-			r = f.read().strip()
-		return r
+	#def get_head_id(self, subpath='HEAD'):
+		#path = self.harmony_dir(subpath) #os.path.join(self.harmony_dir(), 'HEAD')
+		#if not os.path.exists(path):
+			#return None
+		#with open(path, 'r') as f:
+			#r = f.read().strip()
+		#return r
 	
-	def get_head(self, subpath='HEAD'):
-		return self.get_commit(self.get_head_id(subpath=subpath))
+	#def get_head(self, subpath='HEAD'):
+		#return self.get_commit(self.get_head_id(subpath=subpath))
 	
-	def has_commit(self, commit_id):
-		filepath = self.commit_dir(commit_id)
-		return os.path.exists(filepath)
+	#def has_commit(self, commit_id):
+		#filepath = self.commit_dir(commit_id)
+		#return os.path.exists(filepath)
 	
-	def get_commit(self, commit_id):
-		filepath = self.commit_dir(commit_id)
-		with open(filepath, 'r') as f:
-			r = json.load(f, object_hook = json_encoder.object_hook)
-		return r
+	#def get_commit(self, commit_id):
+		#filepath = self.commit_dir(commit_id)
+		#with open(filepath, 'r') as f:
+			#r = json.load(f, object_hook = json_encoder.object_hook)
+		#return r
 	
-	def add_commit(self, c):
-		s = json.dumps(c,
-				cls = json_encoder.JSONEncoder,
-				separators = (',', ': '),
-				indent = 2,
-				sort_keys = True,
-		)
-		h = hashlib.sha256(s.encode('utf-8')).hexdigest()
-		filepath = self.commit_dir(h)
-		with open(filepath, 'w') as f:
-			f.write(s)
-		self.set_head(h)
-		return h
+	#def add_commit(self, c):
+		#s = json.dumps(c,
+				#cls = json_encoder.JSONEncoder,
+				#separators = (',', ': '),
+				#indent = 2,
+				#sort_keys = True,
+		#)
+		#h = hashlib.sha256(s.encode('utf-8')).hexdigest()
+		#filepath = self.commit_dir(h)
+		#with open(filepath, 'w') as f:
+			#f.write(s)
+		#self.set_head(h)
+		#return h
 	
 	#
 	# Remotes
@@ -462,122 +608,6 @@ class Repository:
 		self.save_remotes()
 		
 	def commit(self):
-		c = Commit(self)
-		
-		parent_id = self.get_head_id()
-		
-		# Copy states from parent
-		
-		if parent_id is not None:
-			c.add_parent(parent_id)
-			parent = self.get_commit(parent_id)
-			#c.files_ = parent.files_.copy()
-			c.add_files_from(parent)
-		
-		changed = False
-		seen_files = set()
-		
-		# Add/update files from working dir
-		# {{{
-		
-		for root, dirs, files in os.walk(self.location):
-			for filename in files:
-				absfn = os.path.join(root, filename)
-				relfn = self.relpath_wd(absfn)
-				seen_files.add(relfn)
-
-				rule = self.configuration.get_rule(self, relfn)
-				with open(relfn, 'rb') as f:
-					new_fi = FileInfo(f)
-				fi = None
-
-				# See whether this file is already being tracked 
-				#
-				if relfn in c.get_filenames():
-					prev_fi = c.get_file(relfn)
-					fi = c.get_file(relfn)
-
-				#if not rule.add_untrack:
-					#logging.debug('ignoring {}'.format(relfn))
-					#if fi and new_fi.content_id != fi.content_id:
-						#logging.warn('local version of ignored file {} differs from repo version'.format(relfn))
-						
-				#else:
-				if fi:
-					# File is tracked
-					if self.get_repository_id() in fi.sources:
-						if not rule.commit_tracked:
-							logging.debug('ignoring tracked file {}'.format(relfn))
-							continue
-						
-						# File is supposed to be in present in the working
-						# directory
-						if new_fi.content_id != fi.content_id:
-							# File content has changed 
-							changed = True
-							logging.info('updated {}'.format(relfn))
-							new_fi.action = 'updated'
-							new_fi.sources.add(self.get_repository_id())
-							c.add_file(relfn, new_fi)
-							
-						# else: file has not changed, nothing to do
-					else:
-						# File is tracked but not expected in this working
-						# directory (nonlocal).
-						if not rule.commit_nonlocal_tracked:
-							logging.debug('ignoring nonlocal tracked file {}'.format(relfn))
-							continue
-						
-						if new_fi.content_id != fi.content_id:
-							# File content has changed 
-							changed = True
-							logging.info('updated nonlocal {}'.format(relfn))
-							new_fi.action = 'updated'
-							new_fi.sources.add(self.get_repository_id())
-							c.add_file(relfn, new_fi)
-							
-				else:
-					# File is untracked
-					if not rule.commit_untracked:
-						logging.debug('ignoring untracked file {}'.format(relfn))
-						continue
-					changed = True
-					logging.info('created {}'.format(relfn))
-					new_fi.action = 'created'
-					new_fi.sources.add(self.get_repository_id())
-					c.add_file(relfn, new_fi)
-		# }}}
-		
-		# Handle deletions
-		deletions = set(c.get_filenames()).difference(seen_files)
-		
-		for relfn in deletions:
-			fi = None
-			if relfn in c.get_filenames():
-				prev_fi = c.get_file(relfn)
-				fi = c.get_file(relfn)
-
-			if fi and self.get_repository_id() in fi.sources:
-				#
-				# Build the new info block for this file,
-				# copy from the old one, but we are not a source anymore.
-				#
-				new_fi = fi.copy()
-				new_fi.sources.discard(self.get_repository_id())
-				if not new_fi.sources:
-					logging.info('exterminated "{}" (no sources left)'.format(relfn))
-					c.delete_file(relfn)
-				else:
-					logging.info('deleted "{}" ({} sources left)'.format(relfn, len(new_fi.sources)))
-					c.edit_file(relfn, new_fi)
-				changed = True
-		
-		if changed:
-			commit_id = self.add_commit(c)
-			self.set_head(commit_id)
-		else:
-			logging.info('nothing to commit')
-		
 	def get_sources(self, relpath):
 		cid = self.get_head_id()
 		if cid is not None:
