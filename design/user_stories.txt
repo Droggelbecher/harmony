@@ -1,0 +1,60 @@
+
+The MP3 juggler
+---------------
+
+* I have my MP3s all over the place, on different machines depending on what i
+  need where (which changes from time to time)
+  I try to keep the directory structure similar, but here and there names of
+  files or directory are not consistent
+* With harmony I can create a MP3 repository on each machine and connect them
+  such that harmony has a consistent view of the entirety of the MP3s
+  available and where they are
+* There are different means to output this view, e.g. by outputting file
+  listing into a file, via a GUI or with dead symlinks (like git annex),
+  these are plugins so others may follow
+* harmony keeps this consistent by (manual) syncing, via filesystem operations
+  (e.g. syncing with a mounted smart phone), SSH, IRC (need bouncer?), XMPP.
+  Some of these operate point-to-point and can transfer files (e.g. SSH), others can reach
+  all repositories at once but might not be suitable for file transfer (XMPP,
+  IRC).
+* Repositories have an understanding of how to reach other repositories and
+  what repos consist in the conglomerate.
+  This meta information gets transferred as part of the synchronization
+  process. Repositories might not be reachable from all other repositories by
+  the same means or not at all by some. Thus, it is always possible to locally
+  specify how to reach each other repository.
+* I can request downloading of a certain file, harmony will search the
+  "nearest" location for that (preferring filesystem operations over SSH
+  connections)
+* Harmony is smart about duplicate files, so when I have MP3s in my
+  repository twice, it can use a file with different name and same content as
+  source for the request.
+
+* Harmony allows me to conduct operations such as renaming, moving or DELETING
+  files from the repository without having to download them. This works e.g.
+  by an editable file list
+* Harmony separates cleanly between deeleting a local instance of a file and
+  DELETING a file from the repository. It is possible to have harmony make
+  sure (by communication) that another instance of a file exists
+* As files are potentially large, harmony keeps them only in the working copy.
+  That entails however that a local rm may destroy the last copy of a file.
+  Therefore, harmony can change the permissions of files to a read-only state
+  so that one has to ask harmony to unlock a file so it becomes deletable.
+
+* I can set up a harmony repo as complete archive. As the archive is usually
+  better reachable than other repos (e.g. on laptops), other repos push files
+  to it, when there are changes. The complete archive mirrors exactly all
+  files in the repo.
+* Synchronization of metadata and file data are separated, and both triggered
+  manually, so i can do stuff on my laptop when offline and sync later.
+  Harmony will warn/remind me if operations are pending, e.g., when I have to
+  sync my state after changing things, or, more important, when I have to
+  upload files
+
+* Harmony separates cleanly between files CONTENT and their METADATA.
+  Metadata includes changeable aspects like the file name, permissions and
+  content-dependent aspects such as file size and a hash value over the
+  contents.
+* With a special MP3 plugin it is possible to also identify ID3 tags as meta
+  data. This allows to change ID3 ta
+
