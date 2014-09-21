@@ -1,0 +1,47 @@
+
+
+ConglomerateState
+------------------
+
+Collection of all states of all files in all locations connected to each other
+by file exchange.
+
+- file states: map< Location, [ FileState ] >
+- parents
+  References to other ConglomerateStates
+  that are considered earlier versions of this conglomerate
+
+
+
+FileState
+----------
+
+Summarizes the state of a single physical file in
+a location.
+
+- full path: Path
+
+- location: LocationID
+  (possibly implicit)
+
+- known content ids (for different encodings): [ ContentID ]
+  e.g.
+  'plain.sha1:12345678abcd',
+  'gz.md5:12345678abcd',
+  'gz{level=9}.sha1:12345678abcd',
+  'gpg{armor,cipher=twofish}.sha512:12345678abcd',
+  'gz.gpg.worm:12345678abcd'
+
+- content encoding: EncodingID
+  e.g. 'gz{level=9}.gpg'
+
+- additional metadata
+  - size
+  - modification time
+  - permissions
+
+- parents
+  References to other FileStates that are considered
+  an earlier version of this file, those might have different contents and
+  metadata.
+

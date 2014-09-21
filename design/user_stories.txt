@@ -1,4 +1,31 @@
 
+The storage master
+------------------
+
+* I store my files at very different locations (remote servers, removable media, NAS,
+  etc...)
+* These locations have different available storage space and trustworthiness
+* Thus, depending on the role and size of each file as well as the location it
+  should be stored compressed, encrypted or both.
+* Harmony helps me with that in allowing to specify with rules how files
+  should be stored in each location.
+* Harmony will still be able to realize that an encrypted and/or compressed
+  file in one location is the same as an unencrypted/uncompressed file in
+  another. For this harmony can track multiple IDs of file content for the
+  various encodings and convert between them to obtain a new ID if necessary.
+* As harmony does not store my password with the encrypted files (which would
+  render the encryption pointless), it uses a public key scheme so it can
+  always encrypt files (but only decrypt them with my password)
+* I can manually en-/decrypt and/or pack/unpack files in my working
+  directories and harmony will realize the change of encoding but also note
+  when e.g. the actual content has not actually changed.
+* Harmony does the necessary conversions on the fly when transmitting, asking for a password for
+  decryption if necessary.
+* I can also specifically request that files are only ever transferred to a
+  certain location in given encoding (e.g. packed for speed or encrypted for
+  end-to-end security).
+
+
 The MP3 juggler
 ---------------
 
@@ -33,9 +60,10 @@ The MP3 juggler
 * Harmony allows me to conduct operations such as renaming, moving or DELETING
   files from the repository without having to download them. This works e.g.
   by an editable file list
-* Harmony separates cleanly between deeleting a local instance of a file and
-  DELETING a file from the repository. It is possible to have harmony make
-  sure (by communication) that another instance of a file exists
+* Harmony separates cleanly between DELETING a local instance of a file and
+  DELETING a file from the repository entirely. It is possible to have harmony make
+  sure (by communication) that another instance of a file exists before
+  locally deleting it.
 * As files are potentially large, harmony keeps them only in the working copy.
   That entails however that a local rm may destroy the last copy of a file.
   Therefore, harmony can change the permissions of files to a read-only state
@@ -56,5 +84,5 @@ The MP3 juggler
   content-dependent aspects such as file size and a hash value over the
   contents.
 * With a special MP3 plugin it is possible to also identify ID3 tags as meta
-  data. This allows to change ID3 ta
+  data. This allows to change ID3 ta XXX ...?
 
