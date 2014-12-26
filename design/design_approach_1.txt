@@ -1,0 +1,59 @@
+
+Aims
+====
+- No symlinks or other vodoo, actual files in there actual places
+- It should be possible to do everything without an internet connection
+  (except of course communicating with other repositories)
+
+Note:
+The most crucial question is that of how deletion of files is handled,
+everything else seems pretty clear (manually or semi-automatically sync state
+between repositories, download requested files from "closest" location
+(depending on protocol) etc...)
+See user stories for details.
+
+Ideas
+=====
+
+- Destinguish between state-sync and file-sync
+
+- Support repository roles:
+  - Full archive:
+	- Always receives all newest files on file-sync
+	- Only ever deletes files on full deletion, optionally not even that
+    - Will not receive changes to local working directory (i.e. in spirit
+	  similar to a bare git repository)
+	- Can thus be trusted to retain copies of files if sufficiently up to date
+
+  - Slave:
+	- e.g. mounted mobile phone
+	- Never sends state changes to other repositories
+	- Only tracks state for efficient updates
+
+- Remotes have assigned trust information that specifies to what degree the
+  user believes the repositories will retain files
+
+- Files are readonly to avoid accidental manual deletion
+
+- These deletion approaches are supported:
+  - Local deletion (delete only local copy, warn if it seems to be the last
+	one)
+  - Full deletion (delete local copy and mark file to be deleted everywhere)
+
+  Especially for local deletion, support different degrees of carefullness, depending
+  on which conduct a subset of the following actions:
+
+	- Check whether our current state of history states a rometo repositoriy
+	  has the file
+	- Inform the user on when the latest sync with remote repositories where
+	  made, and which trust levels/roles are assigned to them and whether our
+	  info states that they have the file.
+	- Let the user confirm deletion
+	- Query (remote) repositories whether they believe they have the file
+	  (according to history)
+	- Query (remote) repositories whether they actually have a file of
+	  matching name, size and date
+	- Query (remote) repositories whether they actually have a file of
+	  matching name, size, date and checksum
+
+
