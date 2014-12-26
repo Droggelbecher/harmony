@@ -1,4 +1,7 @@
 
+import sys
+sys.path.append('lib/')
+
 import random
 import unittest
 import logging
@@ -10,7 +13,6 @@ import os
 import os.path
 import tempfile
 import commandline
-import sys
 from repository import Repository
 
 class TestRepository(unittest.TestCase):

@@ -44,17 +44,6 @@ class Repository:
 		"""
 		Commit the working dir state to the history, moving HEAD.
 		"""
-		#c = Commit(self)
-		
-		#parent_id = self.get_head_id()
-		
-		## Copy states from parent
-		
-		#if parent_id is not None:
-			#c.add_parent(parent_id)
-			#parent = self.get_commit(parent_id)
-			#c.add_files_from(parent)
-		
 		c = self.history.create_commit(on_top = True)
 		
 		changed = False
@@ -155,32 +144,6 @@ class Repository:
 		else:
 			logging.info('nothing to commit')
 		
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-	
-	def get_repository_id(self):
-		self.load_config()
-		return self.config['id']
-	
-	def get_repository_nickname(self):
-		self.load_config()
-		return self.config['nickname']
-	
 	#
 	# Utility functions
 	# 
@@ -218,99 +181,6 @@ class Repository:
 		
 	def commit_dir(self, c=''):
 		return self.harmony_dir(os.path.join('commits', c))
-	
-	
-	def load_json_config(self, name, default = {}):
-		filepath = os.path.join(self.harmony_dir(), name)
-		if not os.path.exists(filepath):
-			with open(filepath, 'w') as f:
-				json.dump(default, f)
-			
-		try:
-			with open(filepath, 'r') as f:
-				obj = json.load(f)
-		except ValueError:
-			obj = {}
-		return obj
-	
-	def save_json_config(self, name, data):
-		filepath = os.path.join(self.harmony_dir(), name)
-		with open(filepath, 'w') as f:
-			json.dump(data, f, sort_keys=True, indent=2,
-					separators=(',', ': '))
-	
-	def load_config(self):
-		self.config = self.load_json_config('config', {})
-		
-	def save_config(self):
-		self.save_json_config('config', self.config)
-		
-	def load_rules(self):
-		self.rules = self.load_json_config('rules')
-		if 'rules' not in self.rules:
-			self.rules['rules'] = []
-			self.save_rules()
-		
-	def save_rules(self):
-		self.save_json_config('rules', self.rules)
-		
-	def load_remotes(self):
-		self.remotes = self.load_json_config('remotes', {})
-		
-	def save_remotes(self):
-		self.save_json_config('remotes', self.remotes)
-		
-	
-	#
-	# File rules
-	# 
-	
-	def get_rules(self, p): return self.configuration.get_rules()
-	
-	#
-	# History
-	# 
-	 
-	#def set_head(self, hid):
-		#assert isinstance(hid, str)
-		#path = os.path.join(self.harmony_dir(), 'HEAD')
-		#with open(path, 'w') as f:
-			#f.write(hid.strip())
-	
-	#def get_head_id(self, subpath='HEAD'):
-		#path = self.harmony_dir(subpath) #os.path.join(self.harmony_dir(), 'HEAD')
-		#if not os.path.exists(path):
-			#return None
-		#with open(path, 'r') as f:
-			#r = f.read().strip()
-		#return r
-	
-	#def get_head(self, subpath='HEAD'):
-		#return self.get_commit(self.get_head_id(subpath=subpath))
-	
-	#def has_commit(self, commit_id):
-		#filepath = self.commit_dir(commit_id)
-		#return os.path.exists(filepath)
-	
-	#def get_commit(self, commit_id):
-		#filepath = self.commit_dir(commit_id)
-		#with open(filepath, 'r') as f:
-			#r = json.load(f, object_hook = json_encoder.object_hook)
-		#return r
-	
-	#def add_commit(self, c):
-		#s = json.dumps(c,
-				#cls = json_encoder.JSONEncoder,
-				#separators = (',', ': '),
-				#indent = 2,
-				#sort_keys = True,
-		#)
-		#h = hashlib.sha256(s.encode('utf-8')).hexdigest()
-		#filepath = self.commit_dir(h)
-		#with open(filepath, 'w') as f:
-			#f.write(s)
-		#self.set_head(h)
-		#return h
 	
 	#
 	# Remotes
@@ -608,6 +478,9 @@ class Repository:
 		self.save_remotes()
 		
 	def commit(self):
+		# TODO
+		pass
+
 	def get_sources(self, relpath):
 		cid = self.get_head_id()
 		if cid is not None:

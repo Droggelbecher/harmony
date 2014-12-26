@@ -53,6 +53,7 @@ class FileProtocol:
         # not for transfer points. However on syncing we could even look at
         # these 
         #
+        pass
     
 
 protocol.register_protocol(FileProtocol())
