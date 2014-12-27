@@ -26,9 +26,8 @@ class Repository:
 	
 	def __init__(self, location):
 		self.location = os.path.normpath(os.path.abspath(location))
-		self.configuration = configuration.Configuration(self.relpath_hd())
+		self.configuration = configuration.Configuration(self, self.relpath_hd())
 		self.history = history.History(self)
-		self.rules = rules.Rules(self)
 
 	def id(self):
 		return self.configuration.get('id')
@@ -58,7 +57,7 @@ class Repository:
 				relfn = self.relpath_wd(absfn)
 				seen_files.add(relfn)
 
-				rule = self.rules.get(relfn)
+				rule = self.configuration.get_rule(relfn)
 				with open(relfn, 'rb') as f:
 					new_fi = FileInfo(f)
 				fi = None
@@ -221,27 +220,27 @@ class Repository:
 
 	# TODO: do all configuration stuff via the configuration module	
 
-	def make_config(self, nickname = None):
-		self.load_config()
-		# TODO: don't do this if a config already exists!
-		myid = str(uuid.uuid1())
-		self.config['id'] = myid
-		if nickname is None:
-			nickname = '{}-{}'.format(os.path.basename(self.location), socket.gethostname())
-		self.config['nickname'] = nickname
-		self.save_config()
+	#def make_config(self, nickname = None):
+		#self.load_config()
+		## TODO: don't do this if a config already exists!
+		#myid = str(uuid.uuid1())
+		#self.config['id'] = myid
+		#if nickname is None:
+			#nickname = '{}-{}'.format(os.path.basename(self.location), socket.gethostname())
+		#self.config['nickname'] = nickname
+		#self.save_config()
 		
-		self.load_remotes()
-		if myid not in self.remotes:
-			self.remotes[myid] = {} #{ 'id': myid }
-		self.remotes[myid]['uri'] = '.'
-		self.remotes[myid]['nickname'] = nickname
-		self.save_remotes()
+		#self.load_remotes()
+		#if myid not in self.remotes:
+			#self.remotes[myid] = {} #{ 'id': myid }
+		#self.remotes[myid]['uri'] = '.'
+		#self.remotes[myid]['nickname'] = nickname
+		#self.save_remotes()
 	
 	def init(self, nickname = None):
 		os.makedirs(self.commit_dir())
 		os.makedirs(self.temp_dir())
-		self.make_config(nickname = nickname)
+		#self.make_config(nickname = nickname)
 		
 	def pull_state(self, remote_id):
 		"""
@@ -537,10 +536,13 @@ remote)
 	def available_files(self):
 		"""
 		Return all files that were known/assumed
-		to exist in the last commit (HEAD)
+		to exist in the latest commit (HEAD)
 		"""
-		head = self.get_head()
-		return head.get_filenames()
+		head = self.history.get_head()
+		if head:
+			return head.get_filenames()
+		else:
+			return []
 	
 	def cmd_log(self):
 		h = self.get_history()

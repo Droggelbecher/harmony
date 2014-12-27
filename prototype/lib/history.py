@@ -2,6 +2,8 @@
 import configuration
 import json
 import hashlib
+import os
+import os.path
 
 class History:
     def __init__(self, repository):
@@ -61,12 +63,12 @@ class History:
 
     def set_head(self, hid):
         assert isinstance(hid, str)
-        path = os.path.join(self.harmony_dir(), 'HEAD')
+        path = os.path.join(self.repository.harmony_dir(), 'HEAD')
         with open(path, 'w') as f:
             f.write(hid.strip())
     
     def get_head(self, subpath='HEAD'):
-        path = self.harmony_dir(subpath) #os.path.join(self.harmony_dir(), 'HEAD')
+        path = self.repository.harmony_dir(subpath) #os.path.join(self.harmony_dir(), 'HEAD')
         if not os.path.exists(path):
             return None
         with open(path, 'r') as f:

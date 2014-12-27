@@ -15,6 +15,24 @@ import tempfile
 import commandline
 from repository import Repository
 
+KEEP_TEMPDIRS = True
+
+class TempDir:
+	def __init__(self):
+		self.tempdir = tempfile.TemporaryDirectory()
+
+	def __enter__(self):
+		if KEEP_TEMPDIRS:
+			return tempfile.mkdtemp()
+		else:
+			return self.tempdir.__enter__()
+
+	def __exit__(self, exc, value, tb):
+		if KEEP_TEMPDIRS:
+			pass
+		else:
+			return self.tempdir.__exit__(exc, value, tb)
+
 class TestRepository(unittest.TestCase):
 	
 	# Some convenience method to enhance
@@ -50,7 +68,7 @@ class TestRepository(unittest.TestCase):
 		with open(path, 'r') as f:
 			self.assertEqual(f.read(), content)
 
-	def tmpdir(self): return tempfile.TemporaryDirectory()
+	#def tmpdir(self): return tempfile.TemporaryDirectory()
 
 	#
 	# Actual tests
@@ -101,8 +119,10 @@ class TestRepository(unittest.TestCase):
 				commandline.run_command(['init'])
 				
 	def test_clone(self):
-		with tempfile.TemporaryDirectory() as tmpdir1, \
-				tempfile.TemporaryDirectory() as tmpdir2:
+		#with tempfile.TemporaryDirectory() as tmpdir1, \
+				#tempfile.TemporaryDirectory() as tmpdir2:
+		with TempDir() as tmpdir1, \
+				TempDir() as tmpdir2:
 			os.chdir(tmpdir1)
 			commandline.run_command(['init'])
 			

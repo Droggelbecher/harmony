@@ -58,8 +58,8 @@ class Configuration:
         with open(path, 'w') as f:
             json.dump(configuration, f)
 
-    def get_rule(self, repository, fn):
-        return self.get_rules().get_rule(repository, fn)
+    def get_rule(self, fn):
+        return self.get_rules().get_rule(self.repository, fn)
 
     def get_rules(self):
         j = self.load_file(rules_file)
