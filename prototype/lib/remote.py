@@ -16,13 +16,29 @@ class Remote:
     def get_protocol(self):
         return protocol.find_protocol(self.uri)
     
-    def get(self, relpath):
+    def pull_file(self, relpath):
         p = self.get_protocol()
-        p.get_file(self.uri, relpath,
-                os.path.join(self.repository.location, relpath))
+        p.receive_file(self.uri, relpath, os.path.join(self.repository.location, relpath))
+
+    def push_file(self, relpath):
+        p = self.get_protocol()
+        p.send_file(os.path.join(self.repository.location, relpath), self.uri, relpath)
+
+    def push_history(self):
+        p = self.get_protocol()
+        history_dir = self.repository.commit_dir()
+        p.send_recursive(history_dir, self.uri, '.harmony/history')
+
+    def add_remote_head(self, new_head):
+        p = self.get_protocol()
+        p.append_file(self.uri, '.harmony/new_heads', str(new_head))
 
     def is_writeable(self):
         return self.get_protocol().is_writeable(self.uri)
+
+    def __str__(self):
+        return 'Remote(id={}, uri={}, nick={})'.format(self.remote_id,
+                self.uri, self.nickname)
         
     @staticmethod
     def equivalent_uri(a, b):

@@ -10,6 +10,13 @@ Ideas
 
 - Destinguish between state-sync and file-sync
 
+- Support these data transfer operatons between repos:
+  - pull state: always
+  - pull files: always
+  - push state: depending on protocol and repository
+  - push files: depending on protocol and repository
+  
+
 - Support repository roles:
   - Full archive:
 	- Always receives all newest files on file-sync
@@ -25,6 +32,7 @@ Ideas
 
 - Remotes have assigned trust information that specifies to what degree the
   user believes the repositories will retain files
+
 
 Deletion
 ========

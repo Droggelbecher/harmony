@@ -1,4 +1,7 @@
 # vim: set ts=4 sw=4 noexpandtab:
+#
+import sys
+sys.path.append('lib')
 
 import os
 import os.path
@@ -26,20 +29,109 @@ class Repository:
 	
 	def __init__(self, location):
 		self.location = os.path.normpath(os.path.abspath(location))
-		self.configuration = configuration.Configuration(self, self.relpath_hd())
+		self.configuration = configuration.Configuration(self, self.harmony_dir())
 		self.history = history.History(self)
 
 	def id(self):
-		return self.configuration.get('id')
+		return self.configuration.get_config('id')
 
 	def name(self):
-		return self.configuration.get('name')
+		return self.configuration.get_config('name')
+
+	def nickname(self):
+		return self.configuration.get_config('nickname')
 
 	def head(self):
 		return self.history.head()
 
 
 	def commit(self):
+		c = self.history.create_commit(on_top = True)
+		seen_files = set()
+		changed = False
+
+		for root, dirs, files in os.walk(self.location):
+			for filename in files:
+				absfn = os.path.join(root, filename)
+				relfn = self.relpath_wd(absfn)
+				rule = self.configuration.get_rule(relfn)
+				seen_files.add(relfn)
+
+				# new_fi is the file info of the file as it is present in the
+				# working directory
+				with open(relfn, 'rb') as f:
+					new_fi = FileInfo(f)
+
+				# fi is the file info of the previously commited state,
+				# if available (else None)
+				parent_ids = c.get_parents().copy()
+				assert len(parent_ids) in (0, 1)
+				fi = None
+				if len(parent_ids):
+					parent = self.history.get_commit(parent_ids.pop())
+					if relfn in parent.get_filenames():
+						fi = parent.get_file(relfn)
+					else:
+						logging.debug("--- {} not known to parent".format(relfn))
+				else:
+					logging.debug("--- no parents")
+
+				if fi:
+					# File with that name has been tracked before
+					# by this repository
+					if not rule.commit_tracked:
+						logging.debug('ignoring tracked file {}'.format(relfn))
+						continue
+
+					new_fi.sources = fi.sources.union(set([self.id()]))
+
+					# Either content or sources changed
+					if new_fi.content_id != fi.content_id or new_fi.sources != fi.sources:
+						if new_fi.content_id != fi.content_id:
+							logging.info('updated content: {}'.format(relfn))
+						if new_fi.sources != fi.sources:
+							logging.info('updated sources: {}'.format(relfn))
+						new_fi.action = 'updated'
+						c.add_file(relfn, new_fi)
+						changed = True
+
+				elif not fi:
+					# Haven't seen that file before at all,
+					if not rule.commit_untracked:
+						logging.debug('ignoring untracked file {}'.format(relfn))
+						continue
+
+					new_fi.sources.add(self.id())
+					logging.info('created {}'.format(relfn))
+					new_fi.action = 'created'
+					c.add_file(relfn, new_fi)
+					changed = True
+
+		# Handle file deletions.
+		# A file is considered deleted if it has been marked in the history as
+		# present in this repository instance but can not be found in the
+		# filesystem anymore.
+		unseen_files = set(c.get_filenames()).difference(seen_files)
+		for fn in unseen_files:
+			fi = c.get_file(fn)
+			if self.id() in fi.sources:
+				new_fi = fi.copy()
+				new_fi.sources.discard(self.id())
+				if not new_fi.sources:
+					logging.info('exterminated "{}" (no sources left)'.format(relfn))
+					c.delete_file(relfn)
+				else:
+					logging.info('deleted "{}" ({} sources left)'.format(relfn, len(new_fi.sources)))
+					c.edit_file(relfn, new_fi)
+				changed = True
+
+		if changed:
+			commit_id = self.history.save_commit(c)
+			self.history.set_head_id(commit_id)
+		else:
+			logging.info('nothing to commit')
+
+	def commit_(self):
 		"""
 		Commit the working dir state to the history, moving HEAD.
 		"""
@@ -69,8 +161,8 @@ class Repository:
 					fi = c.get_file(relfn)
 
 				if fi:
-					# File is tracked
-					if self.get_repository_id() in fi.sources:
+					# File is tracked by this repo
+					if self.id() in fi.sources:
 						if not rule.commit_tracked:
 							logging.debug('ignoring tracked file {}'.format(relfn))
 							continue
@@ -82,7 +174,7 @@ class Repository:
 							changed = True
 							logging.info('updated {}'.format(relfn))
 							new_fi.action = 'updated'
-							new_fi.sources.add(self.get_repository_id())
+							new_fi.sources.add(self.id())
 							c.add_file(relfn, new_fi)
 							
 						# else: file has not changed, nothing to do
@@ -98,7 +190,7 @@ class Repository:
 							changed = True
 							logging.info('updated nonlocal {}'.format(relfn))
 							new_fi.action = 'updated'
-							new_fi.sources.add(self.get_repository_id())
+							new_fi.sources.add(self.id())
 							c.add_file(relfn, new_fi)
 							
 				else:
@@ -109,7 +201,7 @@ class Repository:
 					changed = True
 					logging.info('created {}'.format(relfn))
 					new_fi.action = 'created'
-					new_fi.sources.add(self.get_repository_id())
+					new_fi.sources.add(self.id())
 					c.add_file(relfn, new_fi)
 		# }}}
 		
@@ -122,13 +214,13 @@ class Repository:
 				prev_fi = c.get_file(relfn)
 				fi = c.get_file(relfn)
 
-			if fi and self.get_repository_id() in fi.sources:
+			if fi and self.id() in fi.sources:
 				#
 				# Build the new info block for this file,
 				# copy from the old one, but we are not a source anymore.
 				#
 				new_fi = fi.copy()
-				new_fi.sources.discard(self.get_repository_id())
+				new_fi.sources.discard(self.id())
 				if not new_fi.sources:
 					logging.info('exterminated "{}" (no sources left)'.format(relfn))
 					c.delete_file(relfn)
@@ -138,13 +230,13 @@ class Repository:
 				changed = True
 		
 		if changed:
-			commit_id = self.add_commit(c)
-			self.set_head(commit_id)
+			commit_id = self.history.save_commit(c)
+			self.history.set_head_id(commit_id)
 		else:
 			logging.info('nothing to commit')
 		
 	#
-	# Utility functions
+	# Directory/Path Utility functions
 	# 
 	
 	def relpath_wd(self, path):
@@ -165,10 +257,6 @@ class Repository:
 				os.path.abspath(self.harmony_dir()))
 		return relpath
 	
-	#
-	# Directories, loading/saving config files, etc...
-	#
-	
 	def harmony_dir(self, subpath = ''):
 		return os.path.join(self.location, '.harmony', subpath)
 	
@@ -186,77 +274,51 @@ class Repository:
 	# 
 	
 	def get_remote(self, remote_id, allow_nickname = True):
-		self.load_remotes()
-		if remote_id not in self.remotes:
+		"""
+		Return the remote with the given id
+		"""
+		#self.load_remotes()
+		remotes = self.configuration.get_remotes()
+		if remote_id not in remotes:
 			if allow_nickname:
-				for k, v in self.remotes.items():
+				for k, v in remotes.items():
 					if v['nickname'] == remote_id:
-						return Remote(self, k, v['uri'], v['nickname'])
+						return Remote(
+								repository = self,
+								remote_id = k,
+								uri = v['uri'],
+								nickname = v['nickname']
+								)
 					
-			#for k, v in self.remotes.items():
-				#if Remote.equivalent_uri(remote_id, v['uri']):
-			return Remote(self, '0', remote_id, '_direct')
-			
 			return None
-		d = self.remotes[remote_id]
+		d = remotes[remote_id]
 		return Remote(self, remote_id, d['uri'], d['nickname'])
 	
 	#
 	# Repository commands
 	# 
 	
-	def cmd_init(self, nickname = None):
-		return self.init(nickname)
-	
-	def cmd_clone(self, uri):
-		return self.clone(uri)
-	
-	#def cmd_pull_state(self, remote_id = 'origin'):
-		#conflicts, commit_id = self.pull_state(remote_id)
-		#if conflicts:
-			#for filename, conflict_type in conflicts:
-				#print("CONFLICT: {} {}
-	
-
-	# TODO: do all configuration stuff via the configuration module	
-
-	#def make_config(self, nickname = None):
-		#self.load_config()
-		## TODO: don't do this if a config already exists!
-		#myid = str(uuid.uuid1())
-		#self.config['id'] = myid
-		#if nickname is None:
-			#nickname = '{}-{}'.format(os.path.basename(self.location), socket.gethostname())
-		#self.config['nickname'] = nickname
-		#self.save_config()
-		
-		#self.load_remotes()
-		#if myid not in self.remotes:
-			#self.remotes[myid] = {} #{ 'id': myid }
-		#self.remotes[myid]['uri'] = '.'
-		#self.remotes[myid]['nickname'] = nickname
-		#self.save_remotes()
-	
 	def init(self, nickname = None):
+		"""
+		Initialize the working directory
+		"""
 		os.makedirs(self.commit_dir())
 		os.makedirs(self.temp_dir())
-		#self.make_config(nickname = nickname)
-		
+		self.configuration.create_files(nickname = nickname)
+
 	def pull_state(self, remote_id):
 		"""
-		Synchronize state with all known & reachable remotes.
+		Synchronize state with given remote.
 		Note that this does not transfer any payload (i.e. does not alter
 		the working copy), but only updates the history.
 		"""
 		
-		self.load_remotes()
-		myhead = self.get_head_id()
+		myhead = self.history.get_head_id()
 		
 		remote_info = self.get_remote(remote_id)
 		if remote_info is None:
 			raise Exception('remote {} not found'.format(remote_id))
 		
-		#for remote_id, remote_info in self.remotes.items():
 		if remote_info.uri == 'file:.':
 			raise Exception("refusing to pull myself")
 		
@@ -268,13 +330,13 @@ class Repository:
 		os.close(tmpfilehandle)
 		
 		try:
-			proto.get_file(remote.uri, '.harmony/HEAD', tmpfilename)
-			remote_head_id = self.get_head_id(reltmpfilename)
+			proto.receive_file(remote.uri, '.harmony/HEAD', tmpfilename)
+			remote_head_id = self.history.get_head_id(reltmpfilename)
 			xs = set([remote_head_id])
 			
 			# Is the set of remote commits a subset of our commits?
 			# If we contain their HEAD, it must be!
-			remote_is_subset = self.has_commit(remote_head_id)
+			remote_is_subset = self.history.has_commit(remote_head_id)
 			
 			if remote_is_subset:
 				logging.info("Already up to date.")
@@ -291,17 +353,18 @@ class Repository:
 			lowest_common_ancestor = None
 			while xs:
 				x = xs.pop()
-				if self.has_commit(x):
-					#if x == myhead:
-						#remote_is_superset = True
-					#else:
-					
+				if self.history.has_commit(x):
 					lowest_common_ancestor = x
 					break
 						
 				else:
-					proto.get_file(remote.uri, '.harmony/commits/' + x, self.commit_dir(x))
-					xs.update(self.get_commit(x).get_parents())
+					# TODO: Assymmetry: for pushing we just copy all commit
+					# files, here we pull every commit we want on its own.
+					# Also, pushing is implemented in remote.py while pulling
+					# is implemented here.
+
+					proto.receive_file(remote.uri, '.harmony/commits/' + x, self.commit_dir(x))
+					xs.update(self.history.get_commit(x).get_parents())
 			
 			if lowest_common_ancestor == myhead:
 				# We are a clean subset of the remote graph,
@@ -320,9 +383,10 @@ class Repository:
 						local_id = myhead,
 						remote_id = remote_head_id)
 				if conflicts:
-					print("Automatic merge failed.")
+					# TODO: Remove print statements
+					logging.info("Automatic merge failed.")
 					for conflict in conflicts:
-						print(conflict)
+						logging.info(conflict)
 					
 				logging.info("Merge.")
 				return conflicts, commit_id
@@ -331,9 +395,29 @@ class Repository:
 			os.unlink(tmpfilename)
 	
 	def merge(self, base_id, local_id, remote_id, conflict_resolutions = {}):
-		base = self.get_commit(base_id)
-		local = self.get_commit(local_id)
-		remote = self.get_commit(remote_id)
+		"""
+		Merge two paths in the commit history.
+
+		@param base_id common ancestor of the two merge paths
+		@param local_id commit at the tip of the path considered 'local'
+		@param remote_id commit at the tip of the path considered 'remote'
+		@param conflict_resolutions TODO a dict that describes how to resolve
+		conflicts TODO.
+
+		@return pair (conflicts, commit_id). conflicts is a list of conflict
+		objects describing what conflicts need to be resolved, if any. If there
+		are no unresolved conflicts, a commit is actually created whose ID is
+		returned in commit_id. Otherwise, commit_id is None.
+
+		"""
+		assert not conflict_resolutions, "Conflict resolution not implemented yet"
+
+		logging.debug('merge(\n\tbase={}\n\tlocal={}\n\tremote={}\n)'.format(
+			base_id, local_id, remote_id))
+
+		base = self.history.get_commit(base_id)
+		local = self.history.get_commit(local_id)
+		remote = self.history.get_commit(remote_id)
 		
 		merge = Commit(self)
 		merge.set_parents((local_id, remote_id))
@@ -341,13 +425,8 @@ class Repository:
 		merge.add_files_from(remote)
 		
 		conflicts = []
-		#diff_local = self.difference(local, base)
-		#diff_remote = self.difference(remote, base)
-		
 		diff_local = CommitDifference(base, local)
 		diff_remote = CommitDifference(base, remote)
-		
-		#merge.files = base.files.copy()
 		
 		# local   remote   conflict condition
 		# 
@@ -438,58 +517,73 @@ class Repository:
 			for change in diff_both:
 				merge.apply_change(change)
 			
-			self.add_commit(merge)
+			cid = self.history.save_commit(merge)
+			logging.debug('merge() created commit {}.'.format(cid))
+
+		logging.debug('merge() finished with {} conflicts remaining.'.format(len(conflicts)))
 		
 		return conflicts, None
 	
 	def clone(self, uri):
+		"""
+		Clone the repository state (history) to the local working directory.
+
+		@doctodo Specify how this should behave when there are already config
+		files/history existing in the local harmony dir.
+		"""
+
 		os.makedirs(self.harmony_dir())
 		os.makedirs(self.temp_dir())
-		#os.makedirs(self.commit_dir())
 		
 		proto = protocol.find_protocol(uri)
-		proto.get_recursive(uri, '.harmony/commits', self.harmony_dir('commits'))
+		proto.receive_recursive(uri, '.harmony/commits', self.harmony_dir('commits'))
 		try:
-			proto.get_file(uri, '.harmony/HEAD', self.harmony_dir('HEAD'))
+			proto.receive_file(uri, '.harmony/HEAD', self.harmony_dir('HEAD'))
 		except FileNotFoundError:
 			logging.warning('remote repo does not have a HEAD (probably you havent committed there yet?)')
-		proto.get_file(uri, '.harmony/remotes', self.harmony_dir('remotes'))
+		proto.receive_file(uri, '.harmony/remotes', self.harmony_dir('remotes'))
 		
-		self.make_config()
+		self.configuration.create_files()
 		
 		fd, tmpfilename = tempfile.mkstemp()
 		os.close(fd)
 		try:
-			proto.get_file(uri, '.harmony/config', tmpfilename)
+			proto.receive_file(uri, '.harmony/config', tmpfilename)
 			with open(tmpfilename, 'r') as f:
 				remote_cfg = json.load(f)
 		finally:
 			os.remove(tmpfilename)
+
+		remotes = self.configuration.get_remotes()
 		
 		remote_id = remote_cfg['id']
 		remote_nickname = remote_cfg.get('nickname', 'origin')
 		
-		self.load_remotes()
-		if remote_id not in self.remotes:
-			self.remotes[remote_id] = {} # 'id': remote_id }
-		self.remotes[remote_id]['nickname'] = remote_nickname
-		self.remotes[remote_id]['uri'] = uri
-		self.save_remotes()
-		
-	def commit(self):
-		# TODO
-		pass
+		if remote_id not in remotes:
+			remotes[remote_id] = {} # 'id': remote_id }
+		remotes[remote_id]['nickname'] = remote_nickname
+		remotes[remote_id]['uri'] = uri
 
+		self.configuration.set_remotes(remotes)
+		
 	def get_sources(self, relpath):
-		cid = self.get_head_id()
+		"""
+		Return a list of all remotes that are currently believed to contain a
+		copy of the file specified by relpath.
+		"""
+		cid = self.history.get_head_id()
 		if cid is not None:
-			c = self.get_commit(cid)
+			c = self.history.get_commit(cid)
 			f = c.get_file(relpath)
 			if f is not None:
 				return f.sources
 		return []
 	
 	def whereis(self, relpath):
+		"""
+		Pretty-print (to stdout) the result of get_sources for relpath.
+		TODO: This shouldnt be here but rather is part of the CLI frontend.
+		"""
 		self.load_remotes()
 		for s in self.get_sources(relpath):
 			if s in self.remotes:
@@ -502,6 +596,8 @@ class Repository:
 			logging.info('{} not found in repository'.format(relpath))
 			
 	def get(self, relpath):
+		"""
+		"""
 		# TODO: should we get the newest version of the file (and make a new
 		# commit)
 		# or the one that matches our HEAD?
@@ -510,24 +606,31 @@ class Repository:
 		# -> not implicitely committing sounds more deterministic
 
 		for src in self.get_sources(relpath):
+			assert src is not None
+				
+			logging.debug('checking whether {} is available from {}'.format(relpath, src))
 			remote = self.get_remote(src)
-			if src is None:
-				logging.warning('no info available about remote {}, ignoring'.format(s))
+
+			if remote is None:
+				logging.warning('no info available about remote {}, ignoring'.format(src))
 				continue
-			remote.get(relpath)
+
+			remote.pull_file(relpath)
 			
 			# this sucks.
 			# Remote-commiting doesnt sound like a good idea,
 			# not communicating the state is counterintuitive as well.
 			# What is the way to go here?
+
+			# TODO: assert we are merged (only have one head!)
+			new_head = self.commit()
 			
-			# TODO: Let remote repository know, we got a copy of this file
-			if remote.is_writeable():
-				# TODO: add new commit with updated source
-				XXX
+			#if remote.is_writeable():
+			if False:
+				remote.push_history()
+				remote.add_remote_head(new_head)
 			else:
-				logging.warning('remote {} is not writable, the other end will not realize we have a copy until it pulls from us!',
-remote)
+				logging.warning('remote {} is not writable, the other end will not realize we have a copy until it pulls from us!'.format(str(remote)))
 				
 				
 			return
@@ -561,11 +664,14 @@ remote)
 				
 			if len(commit.get_parents()) == 0:
 				for filename in commit.get_filenames():
-					print('  A {}'.format(filename))
+					f = commit.get_file(filename)
+					print('  I {} {}:...{:8s}'.format(
+						filename, f.content_id.split(':')[0],
+						f.content_id.split(':')[1][-8:]))
 			elif len(commit.get_parents()) == 1:
 				# TODO: this unecessarily reads the parent commit from disk
 				# (do we care?).
-				d = CommitDifference(self.get_commit(commit.get_parents()[0]), commit)
+				d = CommitDifference(self.history.get_commit(commit.get_parents()[0]), commit)
 				for change in d.get_changes():
 					print('  {}'.format(change.brief()))
 			elif len(commit.get_parents()) == 2:
@@ -574,8 +680,10 @@ remote)
 			
 	def get_history(self):
 		history = []
-		c = self.get_head_id()
-		branches = set([(c, self.get_commit(c))])
+		cid = self.history.get_head_id()
+		c = self.history.get_commit(cid)
+		assert c is not None, "no HEAD"
+		branches = set([(cid, c)])
 		
 		while branches:
 			# find next (in terms of date/time) commit
@@ -589,7 +697,7 @@ remote)
 			history.append((max_commit_id, max_commit))
 			
 			for cid in max_commit.get_parents():
-				branches.add((cid, self.get_commit(cid)))
+				branches.add((cid, self.history.get_commit(cid)))
 		return history
 	
 	

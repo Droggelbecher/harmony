@@ -1,14 +1,16 @@
 
 import os
 import sys
+sys.path.append('lib')
+
 from repository import Repository
 import logging
 import argparse
 
 def cmd_info(repo):
 	print('repository {}\nnickname {}\nHEAD {}'.format(
-		repo.get_repository_id(),
-		repo.get_repository_nickname(),
+		repo.id(),
+		repo.nickname(),
 		repo.get_head_id()))
 
 def cmd_pull_state(repo, remote_id, resolve_file=None):
@@ -17,16 +19,15 @@ def cmd_pull_state(repo, remote_id, resolve_file=None):
 	if conflicts:
 		conflict_filename = repo.temp_dir('conflicts')
 		with open(conflict_filename, 'w') as f:
-			f.write('# local : "{}" {}\n'.format(repo.get_repository_nickname(),
-				repo.get_repository_id()))
+			f.write('# local : "{}" {}\n'.format(repo.nickname(), repo.id()))
 			f.write('# remote: "{}" {} at {}\n'.format(
 				repo.get_remote(remote_id).nickname,
 				repo.get_remote(remote_id).remote_id,
 				repo.get_remote(remote_id).uri))
 			for conflict in conflicts:
 				f.write('[ ] local: {} remote: {}\n'.format(
-					conflict.local_change.brief(),
-					conflict.remote_change.brief()))
+					conflict.local_change.brief() if conflict.local_change else '-',
+					conflict.remote_change.brief() if conflict.remote_change else '-'))
 		
 		print('conflicts during merge. edit .harmony/tmp/conflicts and run "resolve"')
 	
@@ -41,8 +42,6 @@ def run_command(args):
 	}
 	
 	parser = argparse.ArgumentParser(description = 'Harmony')
-	#parser.add_argument('command', metavar='command',
-			#choices = commands.keys())
 	parser.add_argument('--harmony-dir',
 			help='harmony directory to operate on, defaults to working dir',
 			default='.')
@@ -81,11 +80,4 @@ def run_command(args):
 	repository = Repository(ns.harmony_dir)
 	ns.func(repository, *[getattr(ns, v) for v in ns.func_args])
 	
-	#{
-			#'init': lambda args: repository.init(),
-			#'commit': lambda args: repository.commit(),
-			#'clone': lambda args: repository.clone(args[0]),
-			#'whereis': lambda args: repository.whereis(args[0]),
-			#'get': lambda args: repository.get(args[0]),
-	#}.get(args[0])(args[1:])
 

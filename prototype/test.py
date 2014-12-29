@@ -23,7 +23,7 @@ class TempDir:
 
 	def __enter__(self):
 		if KEEP_TEMPDIRS:
-			return tempfile.mkdtemp()
+			return tempfile.mkdtemp(prefix='harmony-test-tmp')
 		else:
 			return self.tempdir.__enter__()
 
@@ -78,14 +78,15 @@ class TestRepository(unittest.TestCase):
 	def test_init(self):
 		expected_files_after_init = sorted([
 				'.harmony/config',
-				'.harmony/remotes'
+				'.harmony/remotes',
+				'.harmony/rules'
 		])
 		
 		#
 		# 'init' creates exactly the expected files
 		#
 		
-		with tempfile.TemporaryDirectory() as tmpdir:
+		with TempDir() as tmpdir:
 			os.chdir(tmpdir)
 			commandline.run_command(['init'])
 			self.assertEqual(self.allfiles(tmpdir), expected_files_after_init)
@@ -133,25 +134,29 @@ class TestRepository(unittest.TestCase):
 		#
 		# Get works (locally)
 		# 
-		with tempfile.TemporaryDirectory() as tmpdir1, \
-				tempfile.TemporaryDirectory() as tmpdir2:
-			os.chdir(tmpdir1)
-			commandline.run_command(['init'])
-			self.create_file(tmpdir1, 'example.txt', 'This is an example.')
-			commandline.run_command(['commit'])
+		#with TempDir() as tmpdir1, \
+				#TempDir() as tmpdir2:
+			#os.chdir(tmpdir1)
+			#commandline.run_command(['init'])
+			#self.create_file(tmpdir1, 'example.txt', 'This is an example.')
+			#commandline.run_command(['commit'])
 			
-			os.chdir(tmpdir2)
-			commandline.run_command(['clone', tmpdir1])
-			commandline.run_command(['get', 'example.txt'])
-			self.check_file(tmpdir2, 'example.txt', 'This is an example.')
+			#os.chdir(tmpdir2)
+			#commandline.run_command(['clone', tmpdir1])
+			#commandline.run_command(['get', 'example.txt'])
+			#self.check_file(tmpdir2, 'example.txt', 'This is an example.')
 			
 		#
 		# Get will get the newest version of a file
 		# 
-		with tempfile.TemporaryDirectory() as tmpdir1, \
-				tempfile.TemporaryDirectory() as tmpdir2, \
-				tempfile.TemporaryDirectory() as tmpdir3:
+		with TempDir() as tmpdir1, \
+				TempDir() as tmpdir2, \
+				TempDir() as tmpdir3:
 					
+			print("tmpdir1=", tmpdir1)
+			print("tmpdir2=", tmpdir2)
+			print("tmpdir3=", tmpdir3)
+
 			os.chdir(tmpdir1)
 			commandline.run_command(['init', '--name', 'repo1'])
 			self.create_file(tmpdir1, 'example.txt', 'This is an example.')
@@ -247,7 +252,7 @@ class TestRepository(unittest.TestCase):
 		# create a file, commit, delete it, commit again.
 		# The file should not appear in the list of tracked files anymore.
 		#
-		with self.tmpdir() as D1:
+		with TempDir() as D1:
 			
 			self.cd(D1)
 			self.harmony('init', '--name', 'repo1')
@@ -272,7 +277,7 @@ class TestRepository(unittest.TestCase):
 		#
 		# That is, get reports to the repo it copied from!
 		#
-		with self.tmpdir() as D1, self.tmpdir() as D2:
+		with TempDir() as D1, TempDir() as D2:
 
 			self.cd(D1)
 			self.harmony('init', '--name', 'repo1')
