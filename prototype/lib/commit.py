@@ -16,28 +16,14 @@ class Commit:
       for the branch identified by the commit
 
 
-    content-based:
-
-    {
-        'created': '12-13-14...',
-        'creating_repository': '12345...',
-        'files': [
-            # content_id -> info
-            '1234...': {
-                'sources': [
-                    { 'repository': '12345...', 'path': 'fobbar/baz.txt',
-                        'modified': '12-34-56...', 'observed': '12-34-56' },
-                    ...
-                ]
-            }
-        ]
-    }
-
-    file-based / both:
-
     {
         'created': '12-13-14...',
         'creating_repository': '1234-5...',
+
+        'clock': {
+            '1234-5678...': 10,
+            '1122-3344...': 2,
+        },
 
         # path -> { repo -> content_id & co. }
         'files': {
@@ -56,13 +42,13 @@ class Commit:
         },
 
         # content_id -> { repo, path }
-        'contents': {
-            'sha256:1234...': {
-                    { 'repository': '12345...', 'path': 'fobbar/baz.txt' },
-                    { 'repository': '67890...', 'path': 'fobbar/baz.txt' },
-                    { 'repository': '67890...', 'path': 'fobbar/blub.txt' },
-            }
-        }
+        #'contents': {
+            #'sha256:1234...': {
+                    #{ 'repository': '12345...', 'path': 'fobbar/baz.txt' },
+                    #{ 'repository': '67890...', 'path': 'fobbar/baz.txt' },
+                    #{ 'repository': '67890...', 'path': 'fobbar/blub.txt' },
+            #}
+        #}
     }
 
     """
@@ -73,14 +59,16 @@ class Commit:
     datetime_format = '%Y-%m-%dT%H:%M:%S.%f'
     
     def __init__(self, repo = None):
-        self.parents_ = set()
+        self.parents_ = {}
         self.files_ = {}
+        self.clock_ = {}
         self.by_content_id_ = {}
         if repo:
             self.repository_id = repo.id()
         else:
             self.repository_id = None
         self.created = datetime.datetime.utcnow()
+        self.update_clock()
         
     #def add_files_from(self, commit):
         #for fn in commit.get_filenames():
@@ -91,14 +79,32 @@ class Commit:
         return self.parents_
     
     def add_parent(self, parent):
-        assert isinstance(parent, str)
-        self.parents_.add(parent)
+        assert isinstance(parent, dict)
+        assert len(parent) == 1
+        assert isinstance(list(parent.keys())[0], str)
+        assert isinstance(list(parent.values())[0], Commit)
+
+        self.parents_.update(parent)
+        self.update_clock()
         
-    def set_parents(self, p):
-        for par in p:
-            assert isinstance(par, str)
+    def set_parents(self, parents):
+        assert isinstance(parents, dict)
+
+        if len(parents) > 0:
+            assert isinstance(list(parents.keys())[0], str)
+            assert isinstance(list(parents.values())[0], Commit)
             
-        self.parents_ = list(p)
+        self.parents_ = parents.copy()
+        self.update_clock()
+
+    def update_clock(self):
+        self.clock_ = {}
+        for pid, p in self.parents_.items():
+            c = p.clock_
+            for repo_id, clock_value in c.items():
+                if self.clock_.get(repo_id, 0) < clock_value:
+                    self.clock_[repo_id] = clock_value
+        self.clock_[self.repository_id] = self.clock_.get(self.repository_id, 0) + 1
     
     def empty(self):
         return len(self.files_) == 0
@@ -111,19 +117,19 @@ class Commit:
         return {
             'creating_repository': self.repository_id,
             'created': self.created.strftime(Commit.datetime_format),
-            'parents': self.parents_,
+            'parents': list(self.parents_.keys()),
             'files': self.files_,
+            'clock': self.clock_,
         }
     
     @staticmethod
     def deserialize(dct):
         r = Commit()
         r.repository_id = dct['creating_repository']
-        r.parents_ = dct['parents']
+        r.parents_ = dict((k, None) for k in dct['parents'])
         r.created = datetime.datetime.strptime(dct['created'], Commit.datetime_format)
         r.files_ = dct['files']
-        #for fname, fi in dct['files'].items():
-            #r.add_file(fname, fi)
+        r.clock_ = dct['clock']
         return r
 
     def has_file(self, relfn):
@@ -149,7 +155,7 @@ class Commit:
 
     def add_source(self, relfn, cid, repo_id):
         e = self.get_file_version(relfn, cid)
-        e[repo_id] = { 'modified': None, 'created': None }
+        e[repo_id] = { 'modified': None, 'observed': None }
         self.set_file_version(relfn, cid, e)
 
     def get_repos_providing(self, relfn, cid):

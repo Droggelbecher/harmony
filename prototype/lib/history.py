@@ -20,7 +20,8 @@ class History:
         return os.path.exists(filepath)
     
     def get_commit(self, commit_id):
-        assert commit_id is not None
+        assert isinstance(commit_id, str)
+
         filepath = self.commit_dir(commit_id)
         with open(filepath, 'r') as f:
             r = json.load(f, object_hook = json_encoder.object_hook)
@@ -31,7 +32,7 @@ class History:
         if on_top:
             hid = self.get_head_id()
             if hid is not None:
-                c.add_parent(hid)
+                c.add_parent({hid: self.get_commit(hid)})
             else:
                 logging.warning('Creating initial commit')
         return c

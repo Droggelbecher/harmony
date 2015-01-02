@@ -86,10 +86,10 @@ class Repository:
 
 		# Get parent (if any)
 
-		parent_ids = c.get_parents().copy()
-		assert len(parent_ids) in (0, 1)
-		if len(parent_ids):
-			p = self.history.get_commit(parent_ids.pop())
+		parents = c.get_parents().copy()
+		assert len(parents) in (0, 1)
+		if len(parents):
+			p = set(parents.values()).pop()
 		else:
 			p = None
 
