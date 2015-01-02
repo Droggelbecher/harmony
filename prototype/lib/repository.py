@@ -13,17 +13,18 @@ import logging
 import socket
 import tempfile
 
+from commit import Commit
+from commit_difference import CommitDifference, Edit, Deletion, Rename, Creation
+from conflict import Conflict
+from file_info import FileInfo
+from hashers.hashlib_hasher import HashlibHasher
+from remote import Remote
+import configuration
+import hashers
+import history
 import json_encoder
 import protocol
 import protocols.file
-from file_info import FileInfo
-from commit import Commit
-from remote import Remote
-from commit_difference import CommitDifference, Edit, Deletion, Rename, Creation
-from conflict import Conflict
-
-import configuration
-import history
 
 class Repository:
 	
@@ -44,92 +45,185 @@ class Repository:
 	def head(self):
 		return self.history.head()
 
+	# hyothetical commit method pseudocode
+	# for content-based tracking
+	#"""
+	#def commit(self):
+		#c = create commit on top of HEAD or as initial commit
+
+		#copy all remote file infos from c.parent to c
+
+		#for all files F in repo:
+			#cid = content_id(F)
+
+			#if cid != parent cid for this repo & file AND
+					#cid != default version:
+				#set new default version
+
+		#if c != c.parent:
+			#commit c
+
+
+	#def merge(self, base, local, remote):
+
+		#for all filenames in intersection(local, remote) with same repo:
+			#if content_id differs:
+				#if one content_id matches base:
+					#use other
+				#else:
+					#should be impossible!
+
+			#if default_version differs:
+				#if one is equal to base default_version:
+					#use other
+				#else:
+					#ask user
+	#"""
+
 
 	def commit(self):
 		c = self.history.create_commit(on_top = True)
-		seen_files = set()
-		changed = False
+
+		# Get parent (if any)
+
+		parent_ids = c.get_parents().copy()
+		assert len(parent_ids) in (0, 1)
+		if len(parent_ids):
+			p = self.history.get_commit(parent_ids.pop())
+		else:
+			p = None
 
 		for root, dirs, files in os.walk(self.location):
 			for filename in files:
 				absfn = os.path.join(root, filename)
 				relfn = self.relpath_wd(absfn)
 				rule = self.configuration.get_rule(relfn)
-				seen_files.add(relfn)
 
-				# new_fi is the file info of the file as it is present in the
-				# working directory
-				with open(relfn, 'rb') as f:
-					new_fi = FileInfo(f)
+				if not rule.commit_tracked and \
+						p is not None and p.has_file(relfn):
+					logging.debug('ignoring tracked file {}'.format(relfn))
+					continue
 
-				# fi is the file info of the previously commited state,
-				# if available (else None)
-				parent_ids = c.get_parents().copy()
-				assert len(parent_ids) in (0, 1)
-				fi = None
-				if len(parent_ids):
-					parent = self.history.get_commit(parent_ids.pop())
-					if relfn in parent.get_filenames():
-						fi = parent.get_file(relfn)
-					else:
-						logging.debug("--- {} not known to parent".format(relfn))
-				else:
-					logging.debug("--- no parents")
+				if not rule.commit_untracked and \
+						(p is None or not p.has_file(relfn)):
+					logging.debug('ignoring untracked file {}'.format(relfn))
+					continue
 
-				if fi:
-					# File with that name has been tracked before
-					# by this repository
-					if not rule.commit_tracked:
-						logging.debug('ignoring tracked file {}'.format(relfn))
-						continue
+				cid = self.compute_content_id(absfn)
+				c.add_source(relfn, cid, self.id())
 
-					new_fi.sources = fi.sources.union(set([self.id()]))
+				# Is this file (with the same contents) present in the parent
+				# commit?
+				same_in_parent = p is not None and (self.id() in p.get_repos_providing(relfn, cid))
+				if not same_in_parent:
+					c.set_default_version(relfn, cid)
 
-					# Either content or sources changed
-					if new_fi.content_id != fi.content_id or new_fi.sources != fi.sources:
-						if new_fi.content_id != fi.content_id:
-							logging.info('updated content: {}'.format(relfn))
-						if new_fi.sources != fi.sources:
-							logging.info('updated sources: {}'.format(relfn))
-						new_fi.action = 'updated'
-						c.add_file(relfn, new_fi)
-						changed = True
-
-				elif not fi:
-					# Haven't seen that file before at all,
-					if not rule.commit_untracked:
-						logging.debug('ignoring untracked file {}'.format(relfn))
-						continue
-
-					new_fi.sources.add(self.id())
-					logging.info('created {}'.format(relfn))
-					new_fi.action = 'created'
-					c.add_file(relfn, new_fi)
-					changed = True
-
-		# Handle file deletions.
-		# A file is considered deleted if it has been marked in the history as
-		# present in this repository instance but can not be found in the
-		# filesystem anymore.
-		unseen_files = set(c.get_filenames()).difference(seen_files)
-		for fn in unseen_files:
-			fi = c.get_file(fn)
-			if self.id() in fi.sources:
-				new_fi = fi.copy()
-				new_fi.sources.discard(self.id())
-				if not new_fi.sources:
-					logging.info('exterminated "{}" (no sources left)'.format(relfn))
-					c.delete_file(relfn)
-				else:
-					logging.info('deleted "{}" ({} sources left)'.format(relfn, len(new_fi.sources)))
-					c.edit_file(relfn, new_fi)
-				changed = True
-
-		if changed:
+		if p is None or c != p:
 			commit_id = self.history.save_commit(c)
 			self.history.set_head_id(commit_id)
 		else:
 			logging.info('nothing to commit')
+
+		#seen_files = set()
+		#changed = False
+
+		#for root, dirs, files in os.walk(self.location):
+			#for filename in files:
+				#absfn = os.path.join(root, filename)
+				#relfn = self.relpath_wd(absfn)
+				#rule = self.configuration.get_rule(relfn)
+				#seen_files.add(relfn)
+
+				## new_fi is the file info of the file as it is present in the
+				## working directory
+				#with open(relfn, 'rb') as f:
+					#new_fi = FileInfo(file = f)
+				#new_fi.add_source(self)
+
+				## fi is the file info of the previously commited state,
+				## if available (else None)
+				#parent_ids = c.get_parents().copy()
+				#assert len(parent_ids) in (0, 1)
+
+				#fi = None
+				#if len(parent_ids):
+					#parent = self.history.get_commit(parent_ids.pop())
+					#fi = parent.get_file(relfn, self.id())
+
+				## fi is either None or a FileInfo object for the previous
+				## state of the file with the same name in this repository
+
+				#if fi:
+					## File with that name has been tracked before
+					## by this repository
+					#if not rule.commit_tracked:
+						#logging.debug('ignoring tracked file {}'.format(relfn))
+						#continue
+
+					#if new_fi.content_id == fi.content_id:
+						## Content of file has not changed
+						## ...so availability has neither
+						#new_fi.add_sources_from(fi)
+
+					#else:
+						## Content changed
+						## Find all repositories that have the same content for
+						## this filename
+						#sources = parent.get_files(path = relfn
+
+
+
+
+
+					#if 
+
+					#new_fi.sources = fi.sources.union(set([self.id()]))
+
+					## Either content or sources changed
+					#if new_fi.content_id != fi.content_id or new_fi.sources != fi.sources:
+						#if new_fi.content_id != fi.content_id:
+							#logging.info('updated content: {}'.format(relfn))
+						#if new_fi.sources != fi.sources:
+							#logging.info('updated sources: {}'.format(relfn))
+						#new_fi.action = 'updated'
+						#c.add_file(relfn, new_fi)
+						#changed = True
+
+				#elif not fi:
+					## Haven't seen that file before at all,
+					#if not rule.commit_untracked:
+						#logging.debug('ignoring untracked file {}'.format(relfn))
+						#continue
+
+					#new_fi.sources.add(self.id())
+					#logging.info('created {}'.format(relfn))
+					#new_fi.action = 'created'
+					#c.add_file(relfn, new_fi)
+					#changed = True
+
+		## Handle file deletions.
+		## A file is considered deleted if it has been marked in the history as
+		## present in this repository instance but can not be found in the
+		## filesystem anymore.
+		#unseen_files = set(c.get_filenames()).difference(seen_files)
+		#for fn in unseen_files:
+			#fi = c.get_file(fn)
+			#if self.id() in fi.sources:
+				#new_fi = fi.copy()
+				#new_fi.sources.discard(self.id())
+				#if not new_fi.sources:
+					#logging.info('exterminated "{}" (no sources left)'.format(relfn))
+					#c.delete_file(relfn)
+				#else:
+					#logging.info('deleted "{}" ({} sources left)'.format(relfn, len(new_fi.sources)))
+					#c.edit_file(relfn, new_fi)
+				#changed = True
+
+		#if changed:
+			#commit_id = self.history.save_commit(c)
+			#self.history.set_head_id(commit_id)
+		#else:
+			#logging.info('nothing to commit')
 
 	def commit_(self):
 		"""
@@ -269,6 +363,13 @@ class Repository:
 	def commit_dir(self, c=''):
 		return self.harmony_dir(os.path.join('commits', c))
 	
+	#
+	# File utiliity functions
+	#
+	def compute_content_id(self, relfn):
+		hash_ = HashlibHasher('sha256').hash
+		return hash_(open(self.harmony_dir(relfn), 'rb'))
+
 	#
 	# Remotes
 	# 
@@ -421,6 +522,30 @@ class Repository:
 		
 		merge = Commit(self)
 		merge.set_parents((local_id, remote_id))
+
+		
+		filenames_local = set(local.get_filenames())
+		filenames_remote = set(remote.get_filenames())
+
+		# - Betrachte subset der informationen die sich auf ein bestimmtes
+		#   repo beziehen.
+
+
+		# local remote base
+		# 0     0      0     -
+		# 0     0      1     deleted on both sides           -> ignore
+		# 0     1      0     added on one side               -> add
+		# 0     1      1     same -> deleted on one side     -> ignore
+		#                    diff -> changed on one, deleted on other --->
+		#                    cant happen with a consinstent state
+		# 1     0      0     added on one side               -> add
+		# 1     0      1
+		# 1     1      0
+		# 1     1      1
+
+
+
+
 		merge.add_files_from(local)
 		merge.add_files_from(remote)
 		
@@ -566,18 +691,18 @@ class Repository:
 
 		self.configuration.set_remotes(remotes)
 		
-	def get_sources(self, relpath):
-		"""
-		Return a list of all remotes that are currently believed to contain a
-		copy of the file specified by relpath.
-		"""
-		cid = self.history.get_head_id()
-		if cid is not None:
-			c = self.history.get_commit(cid)
-			f = c.get_file(relpath)
-			if f is not None:
-				return f.sources
-		return []
+	#def get_sources(self, relpath):
+		#"""
+		#Return a list of all remotes that are currently believed to contain a
+		#copy of the file specified by relpath.
+		#"""
+		#cid = self.history.get_head_id()
+		#if cid is not None:
+			#c = self.history.get_commit(cid)
+			#f = c.get_file(relpath)
+			#if f is not None:
+				#return f.sources
+		#return []
 	
 	def whereis(self, relpath):
 		"""
@@ -595,19 +720,39 @@ class Repository:
 		else:
 			logging.info('{} not found in repository'.format(relpath))
 			
-	def get(self, relpath):
+	def get(self, relpath, repository_ids = None, cid = None):
 		"""
-		"""
-		# TODO: should we get the newest version of the file (and make a new
-		# commit)
-		# or the one that matches our HEAD?
-		# -> at the very least we should warn if we find newer versions are
-		# out there than the one we are requesting
-		# -> not implicitely committing sounds more deterministic
+		
+		Retrieve the file at relpath from the given repository in the
+		specified version to the working directory.
 
-		for src in self.get_sources(relpath):
-			assert src is not None
-				
+		@param relpath Relative path of the file to retrieve.
+		@param repository_ids IDs of repositories to try to retrieve from, if empty
+			or None, use the HEAD commit to find a repository holding the file.
+		@param cid Content ID of the file version to retrieve. If None, use
+			the HEAD commits default version of the file.
+
+		"""
+
+		if cid is None:
+			hid = self.history.get_head_id()
+			if hid is not None:
+				h = self.history.get_commit(hid)
+				cid = h.get_default_version(relpath)
+
+		assert cid is not None, 'No cid specified and no default version available'
+
+
+
+		if not repository_ids:
+			hid = self.history.get_head_id()
+			if hid is not None:
+				h = self.history.get_commit(hid)
+				repository_ids = h.get_repos_providing(relpath, cid)
+
+		#assert repository_ids is not None and len(repository_ids), 'No repositories to pull file from'
+			
+		for src in repository_ids:
 			logging.debug('checking whether {} is available from {}'.format(relpath, src))
 			remote = self.get_remote(src)
 
@@ -616,21 +761,13 @@ class Repository:
 				continue
 
 			remote.pull_file(relpath)
-			
-			# this sucks.
-			# Remote-commiting doesnt sound like a good idea,
-			# not communicating the state is counterintuitive as well.
-			# What is the way to go here?
-
-			# TODO: assert we are merged (only have one head!)
 			new_head = self.commit()
 			
 			#if remote.is_writeable():
-			if False:
-				remote.push_history()
-				remote.add_remote_head(new_head)
-			else:
-				logging.warning('remote {} is not writable, the other end will not realize we have a copy until it pulls from us!'.format(str(remote)))
+				#remote.push_history()
+				#remote.add_remote_head(new_head)
+			#else:
+				#logging.warning('remote {} is not writable, the other end will not realize we have a copy until it pulls from us!'.format(str(remote)))
 				
 				
 			return

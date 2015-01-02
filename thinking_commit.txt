@@ -1,0 +1,33 @@
+
+
+problem: merge 1
+
+repo1:
+
+harmony init
+echo 'A' > example.txt
+harmony commit
+
+C { { content_id 1234 -> repo1:example.txt } }
+
+
+repo2:
+
+harmony clone repo1
+
+C { { content_id 1234 -> repo1:example.txt } }
+
+echo 'B' > example.txt
+harmony commit
+
+C {
+	{ content_id 1234 -> repo1:example.txt }
+	{ content_id 5678 -> repo2:example.txt }
+}
+C { { content_id 1234 -> repo1:example.txt } }
+
+
+repo1:
+sync repo2
+
+

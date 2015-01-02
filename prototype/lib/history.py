@@ -12,13 +12,6 @@ class History:
     def __init__(self, repository):
         self.repository = repository
 
-    def process_copy_notices(self):
-        """
-        Process all the copy notices in the repository (if any)
-        into a commit and apply that.
-        """
-        pass
-
     def commit_dir(self, subpath):
         return self.repository.commit_dir(subpath)
 

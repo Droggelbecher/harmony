@@ -19,6 +19,15 @@ class Configuration:
         self.path = path
         self.repository = repository
 
+    def sanitize_nickname(self, nickname):
+        if nickname is None:
+            nickname = '{}-{}'.format(
+                    os.path.basename(self.repository.location),
+                    socket.gethostname()
+                    )
+        return nickname
+
+
     def create_files(self, **kws):
         # Write out default configs for all files that dont exist
         for relpath in self.all_files:
@@ -28,32 +37,35 @@ class Configuration:
 
 
     def get_default_rules(self, kws = {}):
-        return { 'rules': [] }
+        return {
+                'rules': [
+                    { 'match_filename': '.harmony/*', 'ignore': True, },
+                    { 'match_filename': '*', 'ignore': False, }
+                    ]
+                }
 
     def get_default_config(self, kws = {}):
         new_repo_id = str(uuid.uuid1())
         return {
-            'id': new_repo_id,
-            'nickname': kws.get('nickname', '{}-{}'.format(
-                os.path.basename(self.repository.location), socket.gethostname()
-                )),
-            }
+                'id': new_repo_id,
+                'nickname': self.sanitize_nickname(kws.get('nickname', None))
+                }
 
     def get_default_remotes(self, kws = {}):
         myid = self.repository.id()
         return {
-            myid: {
-                'uri': '.',
-                'nickname': self.repository.nickname(),
+                myid: {
+                    'uri': '.',
+                    'nickname': self.repository.nickname(),
+                    }
                 }
-            }
 
     def get_default(self, relpath, kws = {}):
         return {
                 self.rules_file: self.get_default_rules,
                 self.config_file: self.get_default_config,
                 self.remotes_file: self.get_default_remotes,
-            }[relpath](kws)
+                }[relpath](kws)
 
     def load_file(self, relpath):
         path = os.path.join(self.path, relpath)
@@ -74,9 +86,6 @@ class Configuration:
     def get_rules(self):
         j = self.load_file(self.rules_file)
         rs = [Rule(**r) for r in j.get('rules', [])]
-
-        rs.append(Rule(match_filename = '.harmony/*', ignore = True))
-        rs.append(Rule(match_filename = '*'))
         return Ruleset(rs)
 
     def get_remotes(self):
