@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 import sys
 sys.path.append('lib/')
 
@@ -130,22 +130,45 @@ class TestRepository(unittest.TestCase):
 			os.chdir(tmpdir2)
 			commandline.run_command(['clone', tmpdir1])
 			
-	def test_get(self):
+	def test_get_01(self):
 		#
 		# Get works (locally)
-		# 
-		#with TempDir() as tmpdir1, \
-				#TempDir() as tmpdir2:
-			#os.chdir(tmpdir1)
-			#commandline.run_command(['init'])
-			#self.create_file(tmpdir1, 'example.txt', 'This is an example.')
-			#commandline.run_command(['commit'])
+		 
+		with TempDir() as tmpdir1, \
+				TempDir() as tmpdir2:
+			os.chdir(tmpdir1)
+			commandline.run_command(['init'])
+			self.create_file(tmpdir1, 'example.txt', 'This is an example.')
+			commandline.run_command(['commit'])
 			
-			#os.chdir(tmpdir2)
-			#commandline.run_command(['clone', tmpdir1])
-			#commandline.run_command(['get', 'example.txt'])
-			#self.check_file(tmpdir2, 'example.txt', 'This is an example.')
-			
+			os.chdir(tmpdir2)
+			commandline.run_command(['clone', tmpdir1])
+			commandline.run_command(['get', 'example.txt'])
+			self.check_file(tmpdir2, 'example.txt', 'This is an example.')
+
+			# tmpdir2 should now be aware that example.txt is available in
+			# both repos with the same version
+			r1 = Repository(tmpdir1)
+			r2 = Repository(tmpdir2)
+
+			self.assertEqual(
+				set(
+					r2.head() \
+					.get_file_versions('example.txt') \
+					['sha256:4e2fc0c58f973ddd4ace0de85a5ebba9b88cc35df80d8c455c6079726075d3bf'] \
+					.keys()
+					),
+				set(
+					(r1.id(), r2.id())
+					)
+				)
+					#['sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'] \
+
+			#assert_file_version(tmpdir2, 'example.txt',
+					#'sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+
+
+	def test_get_02(self):
 		#
 		# Get will get the newest version of a file
 		# 
@@ -162,15 +185,15 @@ class TestRepository(unittest.TestCase):
 			self.create_file(tmpdir1, 'example.txt', 'This is an example.')
 			commandline.run_command(['commit'])
 			
-			os.chdir(tmpdir2)
-			commandline.run_command(['clone', tmpdir1])
-			commandline.run_command(['get', 'example.txt'])
-			self.check_file(tmpdir2, 'example.txt', 'This is an example.')
+			#os.chdir(tmpdir2)
+			#commandline.run_command(['clone', tmpdir1])
+			#commandline.run_command(['get', 'example.txt'])
+			#self.check_file(tmpdir2, 'example.txt', 'This is an example.')
 			
 			os.chdir(tmpdir3)
-			commandline.run_command(['clone', tmpdir2])
+			commandline.run_command(['clone', tmpdir1])
 			commandline.run_command(['get', 'example.txt'])
-			self.check_file(tmpdir2, 'example.txt', 'This is an example.')
+			self.check_file(tmpdir3, 'example.txt', 'This is an example.')
 			
 			os.chdir(tmpdir1)
 			self.create_file(tmpdir1, 'example.txt', 'This is a different text.')
@@ -187,30 +210,34 @@ class TestRepository(unittest.TestCase):
 	def test_merge(self):
 		logging.debug("----- test merge")
 		
+		cd = self.cd
+		harmony = self.harmony
+		create = self.create_file
+
 		# Case 1: adding files on both sides leads to the union of files
 		# being available in the merged directory
-		with tempfile.TemporaryDirectory() as tmpdir1, \
-				tempfile.TemporaryDirectory() as tmpdir2, \
-				tempfile.TemporaryDirectory() as tmpdir3:
-					
-			os.chdir(tmpdir1)
-			commandline.run_command(['init', '--name', 'repo1'])
-			self.create_file(tmpdir1, 'base.txt', 'This is an example.')
-			commandline.run_command(['commit'])
-			
-			os.chdir(tmpdir2)
-			commandline.run_command(['clone', tmpdir1])
-			self.create_file(tmpdir2, 'dir2.txt', 'Foo.')
-			commandline.run_command(['commit'])
-			
-			os.chdir(tmpdir1)
-			self.create_file(tmpdir1, 'dir1.txt', 'Bar.')
-			commandline.run_command(['commit'])
-			
-			os.chdir(tmpdir2)
-			commandline.run_command(['pull-state', 'repo1'])
-			commandline.run_command(['log'])
-			
+		with TempDir() as tmpdir1, \
+				TempDir() as tmpdir2, \
+				TempDir() as tmpdir3:
+
+			cd(tmpdir1)
+			harmony('init', '--name', 'repo1')
+			create(tmpdir1, 'base.txt', 'This is an example.')
+			harmony('commit')
+
+			cd(tmpdir2)
+			harmony('clone', tmpdir1)
+			create(tmpdir2, 'dir2.txt', 'Foo.')
+			harmony('commit')
+
+			cd(tmpdir1)
+			create(tmpdir1, 'dir1.txt', 'Bar.')
+			harmony('commit')
+
+			cd(tmpdir2)
+			harmony('pull-state', 'repo1')
+			harmony('log')
+
 			r = Repository(tmpdir1)
 			self.assertIn('base.txt', r.available_files())
 			self.assertIn('dir1.txt', r.available_files())
@@ -221,15 +248,15 @@ class TestRepository(unittest.TestCase):
 			self.assertNotIn('dir2.txt', self.allfiles(tmpdir1))
 			
 			r = Repository(tmpdir2)
-			self.assertIn('base.txt', r.available_files())
-			self.assertIn('dir1.txt', r.available_files())
+			self.assertNotIn('base.txt', r.available_files())
+			self.assertNotIn('dir1.txt', r.available_files())
 			self.assertIn('dir2.txt', r.available_files())
 			
 			self.assertNotIn('base.txt', self.allfiles(tmpdir2))
 			self.assertNotIn('dir1.txt', self.allfiles(tmpdir2))
 			self.assertIn('dir2.txt', self.allfiles(tmpdir2))
 			
-	def test_rm(self):
+	def test_rm_01(self):
 		"""
 		Harmony can decide cleanly between the following file states:
 		
@@ -270,43 +297,43 @@ class TestRepository(unittest.TestCase):
 			self.assert_not_in_dir('hellogoodbye.txt', D1)
 			self.assert_not_in_repo('hellogoodbye.txt', D1)
 
-		#
-		# Two repo instances,
-		# create file, commit, sync, delete, commit again.
-		# The file should still be considered tracked with 1 source.
-		#
-		# That is, get reports to the repo it copied from!
-		#
-		with TempDir() as D1, TempDir() as D2:
+	#def test_rm_02(self):
+		## Two repo instances,
+		## create file, commit, sync, delete, commit again.
+		## The file should still be considered tracked with 1 source.
+		##
+		## That is, get reports to the repo it copied from!
+		##
+		#with TempDir() as D1, TempDir() as D2:
 
-			self.cd(D1)
-			self.harmony('init', '--name', 'repo1')
-			self.create_file(D1, 'hellogoodbye.txt', 'You say yes, I say no.')
-			self.harmony('commit')
+			#self.cd(D1)
+			#self.harmony('init', '--name', 'repo1')
+			#self.create_file(D1, 'hellogoodbye.txt', 'You say yes, I say no.')
+			#self.harmony('commit')
 			
-			self.assert_in_dir('hellogoodbye.txt', D1)
-			self.assert_in_repo('hellogoodbye.txt', D1)
+			#self.assert_in_dir('hellogoodbye.txt', D1)
+			#self.assert_in_repo('hellogoodbye.txt', D1)
 
-			self.cd(D2)
-			self.harmony('clone', D1)
-			self.harmony('get', 'hellogoodbye.txt')
-			self.check_file(D2, 'hellogoodbye.txt', 'You say yes, I say no.')
+			#self.cd(D2)
+			#self.harmony('clone', D1)
+			#self.harmony('get', 'hellogoodbye.txt')
+			#self.check_file(D2, 'hellogoodbye.txt', 'You say yes, I say no.')
 			
-			self.assert_in_dir('hellogoodbye.txt', D2)
-			self.assert_in_repo('hellogoodbye.txt', D2)
+			#self.assert_in_dir('hellogoodbye.txt', D2)
+			#self.assert_in_repo('hellogoodbye.txt', D2)
 
-			self.cd(D1)
-			self.rm('hellogoodbye.txt')
-			self.assert_not_in_dir('hellogoodbye.txt', D1)
-			self.assert_in_repo('hellogoodbye.txt', D1)
+			#self.cd(D1)
+			#self.rm('hellogoodbye.txt')
+			#self.assert_not_in_dir('hellogoodbye.txt', D1)
+			#self.assert_in_repo('hellogoodbye.txt', D1)
 
-			self.harmony('commit')
-			self.assert_not_in_dir('hellogoodbye.txt', D1)
-			self.assert_in_repo('hellogoodbye.txt', D1)
+			#self.harmony('commit')
+			#self.assert_not_in_dir('hellogoodbye.txt', D1)
+			#self.assert_not_in_repo('hellogoodbye.txt', D1)
 
-			self.harmony('get', 'hellogoodbye.txt')
-			self.assert_in_dir('hellogoodbye.txt', D1)
-			self.assert_in_repo('hellogoodbye.txt', D1)
+			#self.harmony('get', 'hellogoodbye.txt')
+			#self.assert_in_dir('hellogoodbye.txt', D1)
+			#self.assert_in_repo('hellogoodbye.txt', D1)
 			
 		
 if __name__ == '__main__':

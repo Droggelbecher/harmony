@@ -27,14 +27,19 @@ class History:
             r = json.load(f, object_hook = json_encoder.object_hook)
         return r
 
-    def create_commit(self, on_top = False):
-        c = Commit(self.repository)
+    def create_commit(self, on_top = False, copy = True):
         if on_top:
             hid = self.get_head_id()
             if hid is not None:
-                c.add_parent({hid: self.get_commit(hid)})
-            else:
-                logging.warning('Creating initial commit')
+                head = self.get_commit(hid)
+                assert head is not None
+                if copy:
+                    c = head.copy(repository_id = self.repository.id())
+                    c.add_parent({hid: head})
+                    return c
+
+        logging.warning('Creating initial commit')
+        c = Commit(self.repository)
         return c
         
     def save_commit(self, c):

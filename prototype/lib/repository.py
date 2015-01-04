@@ -43,49 +43,17 @@ class Repository:
 		return self.configuration.get_config('nickname')
 
 	def head(self):
-		return self.history.head()
-
-	# hyothetical commit method pseudocode
-	# for content-based tracking
-	#"""
-	#def commit(self):
-		#c = create commit on top of HEAD or as initial commit
-
-		#copy all remote file infos from c.parent to c
-
-		#for all files F in repo:
-			#cid = content_id(F)
-
-			#if cid != parent cid for this repo & file AND
-					#cid != default version:
-				#set new default version
-
-		#if c != c.parent:
-			#commit c
-
-
-	#def merge(self, base, local, remote):
-
-		#for all filenames in intersection(local, remote) with same repo:
-			#if content_id differs:
-				#if one content_id matches base:
-					#use other
-				#else:
-					#should be impossible!
-
-			#if default_version differs:
-				#if one is equal to base default_version:
-					#use other
-				#else:
-					#ask user
-	#"""
-
+		return self.history.get_head()
 
 	def commit(self):
-		c = self.history.create_commit(on_top = True)
+		c = self.history.create_commit(on_top = True, copy = True)
+
+		# c is a full copy of the latest commit.
+		# We want to update the info of this local instance, so weed that out
+		# completely first.
+		c.erase_source(self.id())
 
 		# Get parent (if any)
-
 		parents = c.get_parents().copy()
 		assert len(parents) in (0, 1)
 		if len(parents):
@@ -229,8 +197,8 @@ class Repository:
 		"""
 		Commit the working dir state to the history, moving HEAD.
 		"""
-		c = self.history.create_commit(on_top = True)
-		
+		c = self.history.create_commit(on_top = True, copy = True)
+
 		changed = False
 		seen_files = set()
 		
@@ -380,6 +348,7 @@ class Repository:
 		"""
 		#self.load_remotes()
 		remotes = self.configuration.get_remotes()
+		#logging.debug("i know these remotes:" + str(remotes.keys()))
 		if remote_id not in remotes:
 			if allow_nickname:
 				for k, v in remotes.items():
@@ -479,15 +448,20 @@ class Repository:
 				
 			else:
 				# Commits on both sides happened, merge!
-				conflicts, commit_id = self.merge(
+				conflicts, commit_id, commit = self.create_merge_commit(
 						base_id = lowest_common_ancestor,
 						local_id = myhead,
 						remote_id = remote_head_id)
+
+				assert (len(conflicts) == 0) or (commit_id is None)
+
 				if conflicts:
-					# TODO: Remove print statements
 					logging.info("Automatic merge failed.")
 					for conflict in conflicts:
-						logging.info(conflict)
+						logging.info("Conflict: " + conflict)
+
+				if commit_id is None and not conflicts:
+					commit_id = self.history.save_commit(commit)
 					
 				logging.info("Merge.")
 				return conflicts, commit_id
@@ -495,24 +469,26 @@ class Repository:
 		finally:
 			os.unlink(tmpfilename)
 	
-	def merge(self, base_id, local_id, remote_id, conflict_resolutions = {}):
+	def create_merge_commit(self, base_id, local_id, remote_id):
 		"""
-		Merge two paths in the commit history.
+		Create a merge commit.
 
 		@param base_id common ancestor of the two merge paths
 		@param local_id commit at the tip of the path considered 'local'
 		@param remote_id commit at the tip of the path considered 'remote'
-		@param conflict_resolutions TODO a dict that describes how to resolve
-		conflicts TODO.
 
-		@return pair (conflicts, commit_id). conflicts is a list of conflict
-		objects describing what conflicts need to be resolved, if any. If there
-		are no unresolved conflicts, a commit is actually created whose ID is
-		returned in commit_id. Otherwise, commit_id is None.
+		@return tuple (conflicts, commit_id, commit).
 
+		If the merge is a fast-forward, conflicts is an empty collection,
+		commit_id is one of (local_id, remote_id) and commit holds the
+		according commit data.
+
+		If the merge is non-fast-forward, conflicts is a (possibly empty)
+		collection of filenames of all files for which the user has to choose
+		a new default version, commit_id is None and commit contains a
+		preliminary commit object (missing default versions for the
+		conflicting file names).
 		"""
-		assert not conflict_resolutions, "Conflict resolution not implemented yet"
-
 		logging.debug('merge(\n\tbase={}\n\tlocal={}\n\tremote={}\n)'.format(
 			base_id, local_id, remote_id))
 
@@ -520,138 +496,64 @@ class Repository:
 		local = self.history.get_commit(local_id)
 		remote = self.history.get_commit(remote_id)
 		
-		merge = Commit(self)
-		merge.set_parents((local_id, remote_id))
-
-		
-		filenames_local = set(local.get_filenames())
-		filenames_remote = set(remote.get_filenames())
-
-		# - Betrachte subset der informationen die sich auf ein bestimmtes
-		#   repo beziehen.
-
-
-		# local remote base
-		# 0     0      0     -
-		# 0     0      1     deleted on both sides           -> ignore
-		# 0     1      0     added on one side               -> add
-		# 0     1      1     same -> deleted on one side     -> ignore
-		#                    diff -> changed on one, deleted on other --->
-		#                    cant happen with a consinstent state
-		# 1     0      0     added on one side               -> add
-		# 1     0      1
-		# 1     1      0
-		# 1     1      1
-
-
-
-
-		merge.add_files_from(local)
-		merge.add_files_from(remote)
-		
 		conflicts = []
-		diff_local = CommitDifference(base, local)
-		diff_remote = CommitDifference(base, remote)
-		
-		# local   remote   conflict condition
-		# 
-		# target conflicts:
-		#  
-		# edit a  edit a   C: contentL(a) != contentR(a)
-		# mv a b  edit b   C: contentL(b) != contentR(b)
-		# edit b  mv a b   C: contentL(b) != contentR(b)
-		# mv a b  mv c b   C: contentL(b) != contentR(b)
-		# rm a    edit a   C!
-		# edit a  rm a     C!
-		# 
-		# name conflicts:
-		# 
-		# mv a b  mv a c   C: b != c
-		# rm a    mv a b   C!
-		# mv a b  rm a     C!
-		# 
-		# TODO: order conflicts:
-		# 
-		# mv a b  mv b c   remote before local
-		# mv b c  mv a b   local before remote
-		# 
-		# non-conflicts:
-		# 
-		# mv a b  edit a   [b] = remote[a] (apply edit first)
-		# edit a  mv a b   [b] = local[a]  (apply edit first)
-		# 
-		
-		#
-		# Target conflicts: Operations on both sides yielding different
-		# content for the same filename
-		# 
-		
-		targets_l = diff_local.get_changes_by_target()
-		targets_r = diff_remote.get_changes_by_target()
-		
-		intersection = set(targets_l.keys()).intersection(targets_r.keys())
-		
-		for filename in intersection:
-			local_content_id = None
-			local_fi = local.get_file(filename)
-			if local_fi: local_content_id = local_fi.content_id
-			
-			remote_content_id = None
-			remote_fi = remote.get_file(filename)
-			if remote_fi: remote_content_id = remote_fi.content_id
-			
-			if local_content_id != remote_content_id:
-				# There actually is a clash, determine details
-				conflicts.append(Conflict('target', filename, 
-					targets_l.get(filename, None), targets_r.get(filename, None)))
-				
-		#
-		# Name conflicts: Operations on both sides renaming a file differently
-		#
-		
-		sources_l = diff_local.get_changes_by_source()
-		sources_r = diff_remote.get_changes_by_source()
-		
-		for filename in set(sources_l.keys()).union(sources_r.keys()):
-			l = sources_l.get(filename, None)
-			r = sources_r.get(filename, None)
-			if l != r:
-				conflicts.append(Conflict('source', filename, l, r))
-				
-		if not conflicts:
-			# Apply changes
-			
-			def cmp_changes(c1, c2):
-				# Ensure edits happen before renames, this way if both happen
-				# to the same file, they can be both applied easily
-				if isinstance(c1, Edit) and isinstance(c2, Rename):
-					return -1
-				elif isinstance(c1, Rename) and isinstance(c2, Edit):
-					return 1
-				return cmp(c1, c2)
-			
-			def key_changes(c):
-				# Ensure edits happen before renames, this way if both happen
-				# to the same file, they can be both applied easily
-				if isinstance(c, Edit): return (0, c)
-				elif isinstance(c, Rename): return (1, c)
-				return (2, c)
-				
-			
-			diff_both = sorted(diff_local + diff_remote, key=key_changes)
-			for change in diff_both:
-				merge.apply_change(change)
-			
-			cid = self.history.save_commit(merge)
-			logging.debug('merge() created commit {}.'.format(cid))
+		merge = Commit(self)
+		merge.set_parents({local_id: local, remote_id: remote})
 
-		logging.debug('merge() finished with {} conflicts remaining.'.format(len(conflicts)))
-		
-		return conflicts, None
+		# Is this a fast-forward?
+		c, comparisons = local.compare_clock(remote)
+		if c in (-1, 0, 1):
+			top = (local_id, local)
+			if c == -1:
+				top = (remote_id, remote)
+			logging.info('Merge: This is a fast-forward.')
+			return ([], top[0], top[1])
+
+		all_filenames = frozenset(local.get_filenames()).union(remote.get_filenames())
+
+		for filename in all_filenames:
+			remotes_for_file = frozenset().union(*[set(d.keys()) for cid,d in local.get_file_versions(filename).items()])
+
+			# TODO: Move this to a commit.check_sanity() method
+
+			# remotes_for_file should be completely covered by comparisons
+			# keys
+			print(remotes_for_file)
+			print(set(comparisons.keys()))
+			assert remotes_for_file.issubset(set(comparisons.keys()))
+
+			# Merge commit unifies the most up to date file versions from both
+			# commits (depending on their clock value)
+			for remote_id in remotes_for_file:
+				source_commit = local
+				if comparisons[remote_id] == -1:
+					source_commit = remote
+
+				source_cid = source_commit.get_file_content_by_repo(filename, remote_id)
+				merge.add_source(filename, source_cid, remote_id)
+
+			# New decide the default version.
+			# If both repos agree, there is no problem
+			local_default = local.get_default_version(filename)
+			remote_default = remote.get_default_version(filename)
+			base_default = base.get_default_version(filename)
+
+			cids = set(merge.get_file_versions(filename).keys())
+
+			if local_default == remote_default:
+				merge.set_default_version(filename, local_default)
+			elif local_default == base_default or (local_default not in cids):
+				merge.set_default_version(filename, remote_default)
+			elif remote_default == base_default or (remote_default not in cids):
+				merge.set_default_version(filename, local_default)
+			else:
+				conflicts.append(filename)	
+
+		return conflicts, None, merge
 	
 	def clone(self, uri):
 		"""
-		Clone the repository state (history) to the local working directory.
+		Clone the repository state (history) at uri to the local working directory.
 
 		@doctodo Specify how this should behave when there are already config
 		files/history existing in the local harmony dir.
@@ -776,21 +678,22 @@ class Repository:
 	def available_files(self):
 		"""
 		Return all files that were known/assumed
-		to exist in the latest commit (HEAD)
+		to exist in the latest commit (HEAD) in this repository.
 		"""
 		head = self.history.get_head()
 		if head:
-			return head.get_filenames()
+			return list(head.get_filenames_for_source(self.id()))
 		else:
 			return []
 	
 	def cmd_log(self):
 		h = self.get_history()
 		for cid, commit in h:
+			ps = tuple(commit.get_parents().keys())
 			print('commit {:8s} parents {:8s} {:8s}'.format(
 				cid[-8:],
-				commit.get_parents()[0][-8:] if len(commit.get_parents()) >= 1 else '',
-				commit.get_parents()[1][-8:] if len(commit.get_parents()) >= 2 else ''
+				ps[0][-8:] if len(ps) >= 1 else '',
+				ps[1][-8:] if len(ps) >= 2 else ''
 			))
 			
 			print('created {:%Y-%m-%d %H:%M} in {}'.format(commit.created,
@@ -799,19 +702,21 @@ class Repository:
 			#for p in commit.parents:
 				#print("  p {}".format(p[-8:]))
 				
-			if len(commit.get_parents()) == 0:
-				for filename in commit.get_filenames():
-					f = commit.get_file(filename)
-					print('  I {} {}:...{:8s}'.format(
-						filename, f.content_id.split(':')[0],
-						f.content_id.split(':')[1][-8:]))
-			elif len(commit.get_parents()) == 1:
+			if len(ps) == 0:
+				print('  TODO: commit diff not implemented yet')
+				#for filename in commit.get_filenames():
+					#f = commit.get_file(filename)
+					#print('  I {} {}:...{:8s}'.format(
+						#filename, f.content_id.split(':')[0],
+						#f.content_id.split(':')[1][-8:]))
+			elif len(ps) == 1:
 				# TODO: this unecessarily reads the parent commit from disk
 				# (do we care?).
-				d = CommitDifference(self.history.get_commit(commit.get_parents()[0]), commit)
-				for change in d.get_changes():
-					print('  {}'.format(change.brief()))
-			elif len(commit.get_parents()) == 2:
+				print('  TODO: commit diff not implemented yet')
+				#d = CommitDifference(self.history.get_commit(ps[0]), commit)
+				#for change in d.get_changes():
+					#print('  {}'.format(change.brief()))
+			elif len(ps) == 2:
 				print('  (merge)')
 			print()
 			
