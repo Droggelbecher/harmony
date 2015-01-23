@@ -13,24 +13,20 @@ import os.path
 import tempfile
 import commandline
 from repository import Repository
+import shutil
 
 KEEP_TEMPDIRS = True
 
 class TempDir:
     def __init__(self):
-        self.tempdir = tempfile.TemporaryDirectory()
+        self.path = tempfile.mkdtemp(prefix='harmony-test-tmp')
 
     def __enter__(self):
-        if KEEP_TEMPDIRS:
-            return tempfile.mkdtemp(prefix='harmony-test-tmp')
-        else:
-            return self.tempdir.__enter__()
+        return self.path
 
     def __exit__(self, exc, value, tb):
-        if KEEP_TEMPDIRS:
-            pass
-        else:
-            return self.tempdir.__exit__(exc, value, tb)
+        if not KEEP_TEMPDIRS:
+            shutil.rmtree(self.name)
 
 class TestRepository(unittest.TestCase):
     
@@ -51,9 +47,9 @@ class TestRepository(unittest.TestCase):
         return sorted(r)
 
     def assert_in_dir(self, fn, d): self.assertIn(fn, self.allfiles(d))
-    def assert_in_repo(self, fn, d): self.assertIn(fn, Repository(d).available_files())
+    def assert_in_repo(self, fn, d): self.assertIn(fn, Repository(d).get_available_files())
     def assert_not_in_dir(self, fn, d): self.assertNotIn(fn, self.allfiles(d))
-    def assert_not_in_repo(self, fn, d): self.assertNotIn(fn, Repository(d).available_files())
+    def assert_not_in_repo(self, fn, d): self.assertNotIn(fn, Repository(d).get_available_files())
     
     def create_file(self, dirname, fname, content = ''):
         with open(os.path.join(dirname, fname), 'w') as f:
@@ -70,8 +66,6 @@ class TestRepository(unittest.TestCase):
     #
     # Actual tests
     #
-
-            
     def test_init(self):
         expected_files_after_init = sorted([
                 '.harmony/config',
@@ -82,7 +76,6 @@ class TestRepository(unittest.TestCase):
         #
         # 'init' creates exactly the expected files
         #
-        
         with TempDir() as tmpdir:
             os.chdir(tmpdir)
             commandline.run_command(['init'])
@@ -97,8 +90,7 @@ class TestRepository(unittest.TestCase):
         # Pre-existing files are untouched and do not
         # trigger additional file creation
         # 
-        
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with TempDir() as tmpdir:
             os.chdir(tmpdir)
             self.create_file(tmpdir, 'foo.txt', 'tach')
             self.create_file(tmpdir, 'bar.txt')
@@ -109,8 +101,7 @@ class TestRepository(unittest.TestCase):
         #
         # A second init in the same directory fails
         # 
-        
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with TempDir() as tmpdir:
             os.chdir(tmpdir)
             commandline.run_command(['init'])
             with self.assertRaises(FileExistsError):
@@ -128,7 +119,7 @@ class TestRepository(unittest.TestCase):
     def test_get_01(self):
         #
         # Get works (locally)
-         
+        #
         with TempDir() as tmpdir1, \
                 TempDir() as tmpdir2:
             os.chdir(tmpdir1)
@@ -218,18 +209,18 @@ class TestRepository(unittest.TestCase):
             harmony('log')
 
             r = Repository(tmpdir1)
-            self.assertIn('base.txt', r.available_files())
-            self.assertIn('dir1.txt', r.available_files())
-            self.assertNotIn('dir2.txt', r.available_files())
+            self.assertIn('base.txt', r.get_available_files())
+            self.assertIn('dir1.txt', r.get_available_files())
+            self.assertNotIn('dir2.txt', r.get_available_files())
             
             self.assertIn('base.txt', self.allfiles(tmpdir1))
             self.assertIn('dir1.txt', self.allfiles(tmpdir1))
             self.assertNotIn('dir2.txt', self.allfiles(tmpdir1))
             
             r = Repository(tmpdir2)
-            self.assertNotIn('base.txt', r.available_files())
-            self.assertNotIn('dir1.txt', r.available_files())
-            self.assertIn('dir2.txt', r.available_files())
+            self.assertNotIn('base.txt', r.get_available_files())
+            self.assertNotIn('dir1.txt', r.get_available_files())
+            self.assertIn('dir2.txt', r.get_available_files())
             
             self.assertNotIn('base.txt', self.allfiles(tmpdir2))
             self.assertNotIn('dir1.txt', self.allfiles(tmpdir2))

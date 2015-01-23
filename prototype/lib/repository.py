@@ -310,8 +310,6 @@ class Repository:
 
             # remotes_for_file should be completely covered by comparisons
             # keys
-            print(remotes_for_file)
-            print(set(comparisons.keys()))
             assert remotes_for_file.issubset(set(comparisons.keys()))
 
             # Merge commit unifies the most up to date file versions from both
@@ -443,7 +441,7 @@ class Repository:
             return
         logging.error('no remote found to provide {}'.format(relpath))
     
-    def available_files(self):
+    def get_available_files(self):
         """
         Return all files that were known/assumed
         to exist in the latest commit (HEAD) in this repository.
