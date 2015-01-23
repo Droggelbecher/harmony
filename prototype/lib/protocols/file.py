@@ -16,7 +16,6 @@ class FileProtocol:
         return True
     
     def to_dir(self, uri, remote_relative_path):
-        #return os.path.join(uri.split(':')[1], remote_relative_path)
         return os.path.abspath(os.path.join(protocol.split_uri(uri)[1], remote_relative_path))
     
     def receive_file(self, uri, remote_relative_path, local_absolute_path):
