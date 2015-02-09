@@ -105,6 +105,40 @@ class TestRepository(unittest.TestCase):
             commandline.run_command(['init'])
             with self.assertRaises(FileExistsError):
                 commandline.run_command(['init'])
+
+    def test_whereis(self):
+        cd = self.cd
+        harmony = self.harmony
+        create = self.create_file
+
+        with TempDir() as tmpdir:
+            cd(tmpdir)
+            harmony(['init'])
+            create(tmpdir, 'test.txt', 'Hello, World')
+
+            commandline.stdout = StringIO()
+            commandline.stderr = StringIO()
+            harmony(['whereis', 'nonexistent.txt'])
+            self.assertEqual(commandline.stdout.getvalue() == '')
+            self.assertEqual(commandline.stderr.getvalue() ==
+                'nonexstent.txt not found in any known repositories')
+
+    def test_list_files(self):
+        cd = self.cd
+        harmony = self.harmony
+        create = self.create_file
+
+        with TempDir() as tmpdir:
+            cd(tmpdir)
+            harmony(['init'])
+            create(tmpdir, 'test.txt', 'Hello, World')
+
+            commandline.stdout = StringIO()
+            commandline.stderr = StringIO()
+            harmony(['list-files'])
+            self.assertEqual(commandline.stdout.getvalue() == 'test.txt')
+            self.assertEqual(commandline.stderr.getvalue() == '')
+
                 
     def test_clone(self):
         with TempDir() as tmpdir1, \
@@ -269,5 +303,5 @@ if __name__ == '__main__':
     logging.basicConfig(level = logging.DEBUG, format = '[{levelname:7s}] {message:s}', style = '{')
     unittest.main()
 
-# vim: set ts=4 sw=4 tw=78 noexpandtab :
+# vim: set ts=4 sw=4 tw=78 expandtab :
 

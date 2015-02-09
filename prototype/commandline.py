@@ -7,6 +7,8 @@ from repository import Repository
 import logging
 import argparse
 
+stdout = sys.stdout
+
 def cmd_info(repo):
     print('repository {}\nnickname {}\nHEAD {}'.format(
         repo.id(),
