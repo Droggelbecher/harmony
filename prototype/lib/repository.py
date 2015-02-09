@@ -395,7 +395,6 @@ class Repository:
                     self.remotes[s].get('uri', '')))
             else:
                 logging.warning('no info available about remote {}'.format(s))
-                print(s)
         else:
             logging.info('{} not found in repository'.format(relpath))
             

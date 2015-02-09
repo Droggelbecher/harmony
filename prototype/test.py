@@ -57,7 +57,6 @@ class TestRepository(unittest.TestCase):
             
     def check_file(self, dirname, fname, content = ''):
         path = os.path.join(dirname, fname)
-        print(path)
         self.assertTrue(os.path.exists(path))
         self.assertTrue(os.path.isfile(path))
         with open(path, 'r') as f:
@@ -206,7 +205,6 @@ class TestRepository(unittest.TestCase):
 
             cd(tmpdir2)
             harmony('pull-state', 'repo1')
-            harmony('log')
 
             r = Repository(tmpdir1)
             self.assertIn('base.txt', r.get_available_files())
