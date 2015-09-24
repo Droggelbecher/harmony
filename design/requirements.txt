@@ -68,6 +68,16 @@ File transfer / sync
 
  * [310] Files can be pushed to another working directory
 
+ * [311] If a state-commit would (except for parents/timestamp/commit msg) be
+   identical to its parent commit, the commit operation is a no-op.
+
+ * [312] At least for large files (transfer time >5s) there is a progress indicator (progress bar
+   and/or percentage)
+
+ * [313] At least if the total transfer volume is high (total transfer time
+   >5s), there is a progress bar for all requested file transfer operations
+   (if multiple transfers are ongoing at once). It might eg. show how many of
+   the requested files have been transferred.
 
 File identification and storage
 ===============================
@@ -135,4 +145,13 @@ File operations
    other working directories, so that the user can now in advance whether a
    file deletion will destroy the last copy of a file.
 
+ * [604] While 601 allows automatic transfer of renames (as the system will avoid a
+   file deletion if it can match to the repo with a rename), renames do need
+   to be supported in the presence of simultaneous content-change.
+
+   That is, if a file is changed in a working dir A and simultaneously renamed
+   in working dir B, it is assumed this will result in two tracked files.
+   This is however not true if only the rename happened (then, depending on the
+   user configuration, the rename will either propagate or files with the old
+   name will be deleted).
 
