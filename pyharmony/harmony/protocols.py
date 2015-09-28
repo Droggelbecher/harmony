@@ -68,7 +68,9 @@ class FileProtocol(Protocol):
         for commit_fn in glob.glob(os.path.join(location, '.harmony/commits/*')):
             shutil.copyfile(commit_fn, os.path.join(commits_directory, os.path.basename(commit_fn)))
 
-        shutil.copyfile(os.path.join(location, '.harmony/HEAD'), os.path.join(heads_directory, remote_repo.get_id()))
+        sourcefile = os.path.join(location, '.harmony/HEAD')
+        if os.path.exists(sourcefile):
+            shutil.copyfile(sourcefile, os.path.join(heads_directory, remote_repo.get_id()))
         return remote_repo
 
     def pull_file(self, location, path, working_directory):
