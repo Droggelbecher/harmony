@@ -2,89 +2,185 @@
 
 class Grid:
 
-    def place(self, obj, row, column):
-        # TODO
+    class Row:
+        def __init__(self, grid):
+            self.grid = grid
+            self.data = None
+            self.offset = None
 
-    def place_sequence(self, seq, row, column):
-        for i, e in enumerate(seq):
-            self.place(e, row + i, column)
+        def __getitem__(self, i):
+            if self.offset is None or i < self.offset or i >= self.offset + len(self.data):
+                return ' '
+            return self.data[i - self.offset]
+
+        def __setitem__(self, i, value):
+            if self.data is None:
+                self.data = [value]
+                self.offset = i
+
+            elif i < self.offset:
+                self.data = [value] + ([' '] * (i - self.offset - 1)) + self.data
+                self.offset = i
+
+            elif i >= self.offset + len(self.data):
+                self.data += [' '] * (i - (self.offset + len(self.data))) + [value]
+
+            else:
+                self.data[i - self.offset] = value
+
+        def insert_column(self, i):
+            if self.data is None: return
+
+            if i <= self.offset:
+                self.offset += 1
+
+            elif i <= self.offset + len(self.data):
+                self.data = self.data[:i - self.offset] + [' '] + self.data[i - self.offset:]
+
+            # else, i is right of our data so we dont care
+
+        def find_free_index(self):
+            if self.data is None:
+                return 0
+
+            try:
+                return self.data.index(' ')
+            except ValueError:
+                return self.offset + len(self.data)
+
+
+    def __init__(self):
+        self.rows = []
+
+    def add_row(self):
+        row = Grid.Row(self)
+        self.rows.append(row)
+        return row
+
+    def insert_column(self, index):
+        for row in self.rows:
+            row.insert_column(index)
+
+    def render(self):
+        min_offset = min(r.offset for r in self.rows)
+        for i, row in enumerate(self.rows[::-1]):
+            nodename = ''
+            if hasattr(row, 'nodename'):
+                nodename = row.nodename
+
+            print('  ' * (row.offset - min_offset) + ' ' + ' '.join(row.data) + '\t\t'
+                    + nodename)
+                
+
 
 class HistoryGraph:
 
-    class Sequence:
-        def __init__(self):
-            self.nodes = []
+    def compute(self, nodes):
+        """
+        @param nodes nodes ordered by date, descending
+        """
+        
 
-        def append(self, node):
-            self.nodes.append(node)
-            node.sequence = self
+        g = Grid()
 
-        def get_paths(self):
-            paths = set()
-            for c in self.nodes:
-                paths.update(((c, other) for other in c.references))
-            return paths
+        # target => index
+        open_connections = []
 
-        def get_dependencies(self):
-            paths = set()
-            for c in self.nodes:
-                paths.update([node.sequence for node in c.references])
-            return paths
+        for node in nodes:
+            # add a new row on top
+            row = g.add_row()
 
-        def top(self):
-            return self.nodes[-1]
+            # first place the new node if it is referenced
+            # Also resolve all additional references to this node
 
-        def height(self):
-            return len(self.nodes)
+            node_pos = None
+            delete_indices = []
+            for i, (open_index, open_node) in enumerate(open_connections):
+                print(node, i, open_index, open_node)
+                # Is currently added node referenced from here?
+                if open_node is node:
+                    # Is current node not yet placed?
+                    if node_pos is None:
+                        # Great! Just place it directly above referencer
+                        node_pos = open_index
+                        row[node_pos] = '*'
+                        delete_indices.append(i)
+                        #del open_connections[i]
+                    else:
+                        # Its placed already, this might get tricky
+                        # TODO: what do we do here?
+                        # (a) draw a horizontal line straight to the node.
+                        #     What if multiple referencers want this node? -->
+                        #       we can join the lines
+                        #     What if a vertical line already blocks the path?
+                        #       we could simulate a crossing, but that would
+                        #       make things complicated
+                        # (b) insert additional helper lines/columns, again,
+                        #     we'll have to handle crossings and things WILL
+                        #     get ugly...
+                        # (c) be a lazy ass SOB and just invent a new symbol
+                        #     for it, effectively drawing this DAG as a tree.
+                        row[open_index] = '+'
+                        #del open_connections[i]
+                        delete_indices.append(i)
 
-        def __repr__(self):
-            return 'seq' + repr(list(reversed(self.nodes)))
+            # Now delete all the connections we just handled
 
-    def compute(self, node):
+            # sort delete indices reverse, this way no deletion messes
+            # up the index of any future one
+            delete_indices.sort(key = lambda v: -v)
+            for i in delete_indices:
+                del open_connections[i]
 
-        # Compute logical sequences of commits displayed together
-        sequences = self.compute_sequences(node)
+            # extend all open connections
+            open_connections_new = []
+            insert_positions = []
 
-        # Order them topologically
-        ordered_sequences = iter(self.topological_sort(sequences))
+            print("node_pos=", node_pos, "open_connections=", open_connections)
 
-        grid = Grid()
+            for index, target in open_connections:
+                print("conn (",target, ",",index,") row[idx]=", row[index])
+                if row[index] == ' ':
+                    row[index] = '|'
+                    open_connections_new.append((index, target))
 
-        s0 = next(ordered_sequences)
-        grid.place_sequence(s0, 0, 0)
-        prev = s0
+                else:
+                    if row[index - 1] == ' ':
+                        row[index - 1] = '\\'
+                        open_connections_new.append((index - 1, target))
+                    elif row[index + 1] == ' ':
+                        row[index + 1] = '\\'
+                        open_connections_new.append((index + 1, target))
+                    else:
+                        # Insert a new column left of index,
+                        # that should repair the problem.
+                        # This call also fixes indices in row
 
-        for s in ordered_sequences:
-            references_todo = s.get_references()
+                        g.insert_column(index)
 
-            placed = False
+                        # Fix indices in open_connections
 
-            # Align with previous sequence if that makes sense
-            if prev.bottom() in s.top().references:
-                grid.place_sequence_below(prev.bottom(), s)
-                references_todo.remove( (s.top(), prev.bottom()) )
-                placed = True
+                        for i in range(len(open_connections)):
+                            if open_connections[i][0] >= index:
+                                open_connections[i] = (open_connections[i][0] + 1, open_connections[i][1])
 
-            if not placed:
-                # For now, always create a new column
-                grid.place_sequence_below_new_column(prev.bottom())
-                placed = True
+                        row[index - 1] = '\\'
+                        open_connections_new.append(index - 1, target)
 
-            for from_, to in references_todo:
+            open_connections = open_connections_new
 
-                # XXX: idea:
-                # - start left of from_ (we wont the '*' symbols to be right
-                # - use A*
-                # - Treat commits as obstacles, paths not (sometimes we can
-                # not avoid crossings)
-                # - Can we modify the heuristic in A* to avoid path fields?
-                #
-                grid.add_path(from_, to)
-            
+            if node_pos is None:
+                node_pos = row.find_free_index()
+                row[node_pos] = '*'
 
+            row.nodename = node.name
 
-            prev = s
-            
+            for parent in node.parents:
+                open_connections.append((node_pos, parent))
+            print("open_connections'=", open_connections)
+
+        g.render()
+
 
 
     def topological_sort(self, elements):
@@ -142,19 +238,10 @@ class HistoryGraph:
 if __name__ == '__main__':
 
     class Node:
-        def __init__(self, name):
+        def __init__(self, name, t):
             self.name = name
-            self.references = []
-            self.position = None
-            self.column = None
-            self.sequence = None
+            self.t = t
             self.parents = []
-
-        def get_parents(self):
-            return self.parents
-
-        def add_reference(self, pos):
-            self.references.append(pos)
 
         def __str__(self):
             return self.name
@@ -163,8 +250,19 @@ if __name__ == '__main__':
             return self.name
 
     nodes = {}
-    for n in 'abcdefghi':
-        nodes[n] = Node(n)
+    def add_node(n, t):
+        nodes[n] = Node(n, t)
+
+    add_node('a',   0)
+    add_node('b',  10)
+    add_node('c',  20)
+    add_node('f',  30)
+    add_node('d',  40)
+    add_node('e',  50)
+    add_node('g',  60)
+    add_node('h',  70)
+    add_node('i',  80)
+
 
     def p(a, b):
         nodes[a].parents.append(nodes[b])
@@ -183,7 +281,11 @@ if __name__ == '__main__':
 
     hg = HistoryGraph()
 
-    g = hg.compute(nodes['i'])
+    ordered_nodes = sorted(nodes.values(), key=lambda v: -v.t)
+    print(ordered_nodes)
+
+
+    g = hg.compute(ordered_nodes)
     print(g)
 
 
