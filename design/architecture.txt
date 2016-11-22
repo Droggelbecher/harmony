@@ -1,0 +1,394 @@
+
+
+Question:
+	Create a DAG of commits with repo-/file states?
+	Or are vector clocks sufficient?
+
+Investigation:
+	DAG of commits, commit = complete repo state
+	
+	{
+		parents (?)
+		files (hashes, locations, names)
+	}
+	
+	Example
+	*******
+	
+	- 3 Locations (host1, host2, host3)
+	- All have the same state:
+	
+		{
+			"foo.txt" = {
+				host1 = host2 = host3 (= CURRENT) = {
+					hash = 0x1234,
+					clock = { host1 = 1, host2 = 1, host3 = 1 },
+				}
+			}
+			
+			"bar.txt" = {
+				host1 = host2 = host3 (= CURRENT) = {
+					hash = 0x5678,
+					clock = { host1 = 1, host2 = 1, host3 = 1 },
+				}
+			}
+		}
+	
+	
+	File changed on host2 to 0xAAAA
+	===============================
+	
+		On host2:
+		
+		{
+			"foo.txt" = {
+				host2 (= CURRENT) = {
+					hash = 0xAAAA,
+					clock = { host1 = 1, host2 = 2, host3 = 1 },
+				}
+				host1 = host3 = {
+					hash = 0x1234,
+					clock = { host1 = 1, host2 = 1, host3 = 1 },
+				}
+			}
+		}
+		
+		Info: Why we need vector clocks
+		-------------------------------
+		We need VECTOR CLOCKS to mark the "newest" version of the file.
+		Host clocks will likely not be in sync, also we want to be aware when
+		the same file is changed "in parallel" on different hosts.
+		
+		Location A |-- 100 --o------------ 120 -- 220 -o
+		                      \            /            \
+		Location B |-- 010 -- 110 -- 120 -o- 130 --o--- 230
+		                                            \
+		Location C |------------------------------- 130
+
+
+	host1 changes the same file to 0xBBBB without syncing
+	=====================================================
+	
+		On host1:
+		
+		{
+			"foo.txt" = {
+				host1 (= CURRENT) = {
+					hash = 0xBBBB,
+					clock = { host1 = 2, host2 = 1, host3 = 1 },
+				}
+				host2 = host3 = {
+					hash = 0x1234,
+					clock = { host1 = 1, host2 = 1, host3 = 1 },
+				}
+			}
+		}
+
+		Now lets say a sync happens host1 <- host2.
+		A simple merging of the vector clocks would lead to this:
+
+		{
+			"foo.txt" = {
+				host1 (= CURRENT) = {
+					hash = 0xBBBB,
+					clock = { host1 = 2, host2 = 1, host3 = 1 },
+				}
+				host2 (= CURRENT) = {
+					hash = 0xAAAA,
+					clock = { host1 = 1, host2 = 2, host3 = 1 },
+				}
+				
+				host3 = {
+					hash = 0x1234,
+					clock = { host1 = 1, host2 = 1, host3 = 1 },
+				}
+			}
+		}
+
+		How did this merge work?
+		1. Take from each location the information about itself (thats the
+		   only one guaranteed to be up to date where we got it from).
+		2. For all other locations (here host3 only), if vector clocks are
+		   identical, take that value.
+		3. If they are not, we can compute the merge vector clock version the
+		   file must have, but we have no idea about the hash?
+		   EDIT: No, actually within a location all clock values are ordered,
+		   thus one of them is the "maximum" and has the most recently known
+		   hash.
+
+		But now we have two "CURRENT" entries,
+		which "foo.txt" is now considered the "newest"?
+		Here is what happened to that file:
+
+		host1 |-- 111 ------- 211 -- 221 -->
+		                             /
+		host2 |-- 111 -- 121 -------o-->
+		
+		host3 |-- 111 ---->
+
+		The change on host1 might have happened later, but even if we assume
+		perfectly correct and synced wall clock time on all machines, the user
+		might consider the slightly older change on host2 more
+		important/recent as the user working there had more up-to-date
+		information.
+		That means in such a merge case, we have no choice but to ask the user
+		which version should be considered newest and set the "current"
+		pointer accordingly, and give one of the versions the clock value
+		{ host1 = 2, host2 = 2, host3 = 1 }.
+
+		Note
+		======
+		The CURRENT pointer here is just for clarification, it actually
+		follows implicitely from the vector clocks.
+		A vector clock that is >= all others for each individual location is
+		the "latest". If there is no such clock value, it means a merge must
+		be made between all clock values that that have no value being
+		strictly larger than it for all locations.
+
+Answer:
+	Turns out, even when starting out with a DAG of repo states we end up with
+	per-file vector clocks (which in fact are a compact representation of the
+	tip of each per-file DAG).
+
+
+-----------------------
+
+
+Question:
+	So do we even need a pointer to the parent version of the repo state? Maybe
+	for some more complicated merge cases?
+
+Investigation:
+
+	Assume, two versions of the software, one (1) with full history,
+	the other with only one state file per machine (2).
+	Now assume there is a situation that can be resolved with version (1)
+	but not with (2).
+
+	That would mean that this situation has something to do with the part of
+	history of file states that is not expressable with per-file vector
+	clocks and hashes of the locally latest file contents.
+
+	That information would entail:
+
+	* Given there are multiple files with the same hash value in the
+	  repository, to which of these was a wiped file renamed or was it actually deleted?
+	  (See below on handling renames)
+	* In which commit was a file created
+	* In which commit was a file wiped
+
+
+	Consider merge scenario: File exists in one location but not in other.
+	-> File should exist. Otherwise there would be a WIPE entry.
+
+	
+	TODO: Figure this out. Either prove (to myself at least), that such a
+	history is useless or give an example of why it is useful.
+	Idea: We can probably show (TODO) that the history-based merge does only require
+	comparing two versions for parenthood relationships wrt. to a particular
+	file. But that we can as well do with vector clocks -> merging is just as
+	powerful.
+
+
+-----------------------
+
+Question:
+	Should a file name really be its identity?
+	Alas, *everything* about a file can change (name AND contents),
+	we can not hope to detect all these changes, esp. if they happen at once,
+	but can we detect part, eg. renaming?
+
+Investigation:
+	Lets start out on all hosts with this:
+
+	{
+		"foo.txt" = {
+			host1 = host2 = host3 = {
+				hash = 0x1234,
+				clock = { host1 = 1, host2 = 1, host3 = 1 },
+			}
+		}
+	}
+
+	Now on host1: mv foo.txt bar.txt
+
+	Naively:
+
+	{
+		"bar.txt" = {
+			host1 = {
+				hash = 0x1234,
+				clock = { host1 = 1, host2 = 1, host3 = 1 },
+			}
+		},
+		"foo.txt" = {
+			host2 = host3 = {
+				hash = 0x1234,
+				clock = { host1 = 1, host2 = 1, host3 = 1 },
+			}
+		}
+	}
+
+	That would suggest that "foo.txt" is not present on host1 and the user
+	might want to re-download it. Actually however the correct thing to do is
+	to rename it at the other places, too.
+
+	Solution:
+
+	{
+		"bar.txt" = {
+			host1 = {
+				hash = 0x1234,
+				clock = { host1 = 1, host2 = 1, host3 = 1 },
+			}
+		},
+		"foo.txt" = {
+			host1 = {
+				hash = WIPE,
+				clock = { host1 = 2, host2 = 1, host3 = 1 },
+			},
+			host2 = host3 = {
+				hash = 0x1234,
+				clock = { host1 = 1, host2 = 1, host3 = 1 },
+			}
+		}
+	}
+
+	With this state it is clear that a foo.txt should not exist anymore but a
+	bar.txt with the same content.
+	We can later on provide a smart function to get from an existing
+	repository state to a desired one with as little downloads & copies as
+	possible. Such a function would figure out here that the "easiest" thing
+	to do would be to rename foo.txt to bar.txt.
+
+	However, this would require that that function creates bar.txt without the
+	user asking to retrieve it (otherwise it would first delete foo.txt,
+	deleting a potentially valuable copy).
+
+	Thus, the function should always favor moving to a non-requested file over
+	deletion. Actually we could also just ask the user, something along the
+	lines of:
+
+	"""
+	File 'foo.txt' remotely wiped or renamed to 'bar.txt' which is not locally
+	tracked.
+
+	[R]ename 'foo.txt' to 'bar.txt' and track using that name from now on.
+	[D]elete 'foo.txt' locally and untrack (3 locations *might* still have copies,
+	   effective 2016-07-11).
+	[K]eep 'foo.txt' under that name and wipe 'bar.txt' instead, reverting the
+	   renaming.
+	"""
+	(wording still te be improved)
+
+	If there are more than 2 files with the same hash, possible some of them
+	existent and some of them not, options get more complicated.
+	Some ideas:
+	- There still shouldnt be a reason to copy, as that would mean starting to
+	  track a file that wasn't tracked before for no real reason.
+	- Question might be what the new name should be, multiple choice
+	- This case should be more rare, but can happen: Imagine an MP3
+	  collection, initially not well ordered, with several duplicates in
+	  different subfolders, one of which gets wiped (just the one that
+	  one that happened to be checked out somewhere else)
+
+
+-----------------------
+
+Question:
+	WIPE entries are great, but they will accummulate with every removal
+	and/or rename. What can we do?
+
+Answer:
+	1. Switch to a DAG of commits and see the wipes implicitly. That keeps the
+	   most recent commit small, however instead of WIPEs we accummulate commits,
+	   is that any better?
+
+->  2. At some point, automatically clean them up. We can savely remove a
+	   WIPE entry, if the file is not available in any location anymore.
+	   This would behave somewhat oddly with locations with that file added on
+	   the way: If added before the cleanup they would be incented to remove
+	   that file. Otherwise, not. See below for a discussion on how to deal w/
+	   new locations.
+
+-----------------------
+
+Question:
+	Can we add locations on the fly? Easy if they are empty, what if they contain
+	files that also exist in other locations?
+
+Answer:
+	In general its not clear what clock value should be assumed for those
+	files as we don't know what their relation to the equally named ones in
+	the other locations is.
+
+	Solution: Sync, then ask the user for each of those files how to treat it.
+
+-----------------------
+
+Question:
+	How do we identify locations? Ideally the identifiers should be:
+	- Unique (for use in repo states)
+	- OPTIONAL: Describe how to access the location from anywhere (for easy access)
+	  (We can still add URLs seperately to the ID)
+	- Be move friendly (thinks should only break in very obvious ways when
+	  moving a location on disk, assuming it stays on the same system)
+	- Be copy-friendly.
+	- Be "OS-change" friendly (different OSs on same machine interpret the
+	  same path differently).
+	  Ideally this will be treated as the same location, at least it should
+	  treat itself as "the same" (and not re-commit everything done on the
+	  other OS again)
+
+Investigation:
+
+	UUIDs (generated on location init/clone and stored in loc):
+		- [x] unique
+		- [ ] access-descriptive
+		- [x] move-friendly
+		- [ ] copy-friendly
+		- [x] os-change-friendly
+
+	URLs:
+		- [ ] unique (<- multiplicity of host/pathnames for the same thing!)
+		- [x] access-descriptive
+		- [x] move-friendly (<- URL changes only in an obvious way)
+		- [x] copy-friendly
+		- [x] os-change-friendly (<- URL changes in obvious ways)
+
+	Some kind of IDs generated from abs pathname and a somewhat-unique host
+	identification:
+		- [x] unique (somewhat)
+		- [ ] access-descriptive 
+		- [x] move-friendly
+		- [x] copy-friendly
+		- [ ] os-change-friendly
+
+	We can use either UUIDs (os-change-friendly) + URLs (for access, possibly
+	"git remote" style)
+	OR
+	host-pathname-ids (copy-friendly) + URLs.
+
+	Both os-change-friendliness and copy-friendliness can be argued to not be
+	necessary: The OS change thing is a somewhat weird (albeit, realistic)
+	scenario, that people would usually not assume to work OOTB.
+	Copy-friendliness is rarely needed, as the whole point of the tool is to
+	avoid copying stuff, its more natural to use the tool itself for cloning a
+	location.
+
+	Thus, it would be slightly more desirable to go for UUIDs as
+	os-change-friendliness is a need, copy-friendliness is always solvable
+	with the tool, or by some additional command that chooses a new UUID.
+	Also, UUIDs will be much easier to get right, I imagine it to be pretty
+	hard to get reliable, consistent IDs based on host/pathname combo that
+	stay correct over a long period of time (w/ hardware exchange etc..).
+
+Answer:
+	UUIDs + URLs ("git remote"-style).
+
+
+
+
+
+
+
