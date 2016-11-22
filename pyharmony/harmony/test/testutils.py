@@ -27,7 +27,8 @@ def echo(s, *args):
         f.write(s)
 
 class TestCase(unittest.TestCase):
-    def assertFileExists(self, *args, msg=''):
+    def assertFileExists(self, *args, **kws):
+        msg = kws.get('msg', '')
         filename = os.path.join(*args)
         if not os.path.exists(filename):
             self.fail('{} does not exist although it should. {}'.format(filename, msg))
