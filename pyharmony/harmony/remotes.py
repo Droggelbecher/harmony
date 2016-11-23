@@ -38,12 +38,23 @@ class Remotes:
                 }
         serialization.write(d, self.remotes_path)
 
+    def get_location_any(self, s):
+        """
+        Return a location by a "fuzzy" search
+        (meaning s can either be a name or an ID of a location).
+        """
+        r = self.get_location(s, s)
+        if r is None:
+            return s
+
     def get_location(self, id_ = None, name = None):
         if id_ is not None and id_ in self.by_id:
             return self.by_id[id_]
-        if name is not None and name in self.by_id:
+        if name is not None and name in self.by_name:
             return self.by_name[name]
         return None
+        #raise Exception('Location (id={}, name={}) not found.'
+                        #.format(id_, name))
 
     def get_locations(self):
         s = set(self.by_name.values())

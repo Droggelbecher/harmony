@@ -54,30 +54,30 @@ class TestRepository(TestCase):
             r2 = Repository.clone(tmpdir2, tmpdir1)
             self.assertFileExists(tmpdir2, '.harmony', 'config', msg="config file after clone")
             self.assertDirectoriesEqual(
-                J(tmpdir1, '.harmony', 'commits'),
-                J(tmpdir2, '.harmony', 'commits')
+                J(tmpdir1, '.harmony', 'location_states'),
+                J(tmpdir2, '.harmony', 'location_states')
                 )
 
-    def test_commit_creates_new_head(self):
-        with TempDir() as tmpdir1:
-            r1 = Repository.init(tmpdir1)
-            echo('hallo', tmpdir1, 'hallo.txt')
-            r1.commit()
-            head_path = J(tmpdir1, '.harmony', 'HEAD')
-            self.assertFileExists(head_path)
-            with open(head_path, 'r') as f:
-                self.assertFileExists(tmpdir1, '.harmony', 'commits', f.read().strip())
+    #def test_commit_creates_new_head(self):
+        #with TempDir() as tmpdir1:
+            #r1 = Repository.init(tmpdir1)
+            #echo('hallo', tmpdir1, 'hallo.txt')
+            #r1.commit()
+            #head_path = J(tmpdir1, '.harmony', 'HEAD')
+            #self.assertFileExists(head_path)
+            #with open(head_path, 'r') as f:
+                #self.assertFileExists(tmpdir1, '.harmony', 'commits', f.read().strip())
 
     def test_commit_without_changes_does_nothing(self):
         with TempDir() as tmpdir1:
             r1 = Repository.init(tmpdir1)
             echo('hallo', tmpdir1, 'hallo.txt')
             r1.commit()
-            commits = os.listdir(J(tmpdir1, '.harmony', 'commits'))
+            commits = os.listdir(J(tmpdir1, '.harmony', 'location_states'))
             self.assertEqual(1, len(commits))
 
             r1.commit()
-            commits2 = os.listdir(J(tmpdir1, '.harmony', 'commits'))
+            commits2 = os.listdir(J(tmpdir1, '.harmony', 'location_states'))
             self.assertCountEqual(commits, commits2)
 
     def test_commit_with_changes_does_something(self):
@@ -85,50 +85,50 @@ class TestRepository(TestCase):
             r1 = Repository.init(tmpdir1)
             echo('hallo', J(tmpdir1, 'hallo.txt'))
             r1.commit()
-            commits = os.listdir(J(tmpdir1, '.harmony', 'commits'))
+            commits = os.listdir(J(tmpdir1, '.harmony', 'location_states'))
             self.assertEqual(1, len(commits))
 
             echo('hallo, welt', J(tmpdir1, 'hallo.txt'))
             r1.commit()
-            commits2 = os.listdir(J(tmpdir1, '.harmony', 'commits'))
+            commits2 = os.listdir(J(tmpdir1, '.harmony', 'location_states'))
             self.assertEqual(2, len(commits2))
 
-    def test_pull_state_gets_all_commits(self):
-        with TempDir() as tmpdir1, TempDir() as tmpdir2:
+    #def test_pull_state_gets_all_commits(self):
+        #with TempDir() as tmpdir1, TempDir() as tmpdir2:
 
-            # Create R1 with a number of commits
-            #
+            ## Create R1 with a number of commits
+            ##
 
-            r1 = Repository.init(tmpdir1)
+            #r1 = Repository.init(tmpdir1)
 
-            echo('hallo', J(tmpdir1, 'hallo.txt'))
-            r1.commit()
+            #echo('hallo', J(tmpdir1, 'hallo.txt'))
+            #r1.commit()
 
-            echo('hello', J(tmpdir1, 'hello.txt'))
-            r1.commit()
+            #echo('hello', J(tmpdir1, 'hello.txt'))
+            #r1.commit()
 
-            echo('Hallo, Welt', J(tmpdir1, 'hallo.txt'))
-            r1.commit()
+            #echo('Hallo, Welt', J(tmpdir1, 'hallo.txt'))
+            #r1.commit()
 
-            echo('Hallo, Welt!', J(tmpdir1, 'hallo.txt'))
-            echo('Hello, World!', J(tmpdir1, 'hello.txt'))
-            r1.commit()
+            #echo('Hallo, Welt!', J(tmpdir1, 'hallo.txt'))
+            #echo('Hello, World!', J(tmpdir1, 'hello.txt'))
+            #r1.commit()
 
-            # Create R2 and pull state from R1
-            #
+            ## Create R2 and pull state from R1
+            ##
 
-            r2 = Repository.init(tmpdir2)
-            r2.pull_state(tmpdir1)
+            #r2 = Repository.init(tmpdir2)
+            #r2.pull_state(tmpdir1)
 
-            self.assertDirectoriesEqual(
-                    J(tmpdir1, '.harmony', 'commits'),
-                    J(tmpdir2, '.harmony', 'commits')
-                    )
+            #self.assertDirectoriesEqual(
+                    #J(tmpdir1, '.harmony', 'commits'),
+                    #J(tmpdir2, '.harmony', 'commits')
+                    #)
 
-            self.assertFileContentsEqual(
-                    J(tmpdir1, '.harmony', 'HEAD'),
-                    J(tmpdir2, '.harmony', 'remote-heads', r1.get_id())
-                    )
+            #self.assertFileContentsEqual(
+                    #J(tmpdir1, '.harmony', 'HEAD'),
+                    #J(tmpdir2, '.harmony', 'remote-heads', r1.get_id())
+                    #)
 
     def test_pull_state_finds_conflicts(self):
         with TempDir() as tmpdir1, TempDir() as tmpdir2:
@@ -161,8 +161,8 @@ class TestRepository(TestCase):
             conflicts = r2.pull_state(tmpdir1)
             self.assertEqual(2, len(conflicts))
 
-            heads = r2.history.get_head_ids()
-            self.assertEqual(2, len(heads))
+            #heads = r2.history.get_head_ids()
+            #self.assertEqual(2, len(heads))
 
     def test_pull_state_auto_merges(self):
         with TempDir() as tmpdir1, TempDir() as tmpdir2:
@@ -199,10 +199,10 @@ class TestRepository(TestCase):
             conflicts = r2.pull_state(tmpdir1)
             self.assertEqual(0, len(conflicts))
 
-            r2.history.format_log()
+            #r2.history.format_log()
 
-            heads = r2.history.get_head_ids()
-            self.assertEqual(1, len(heads))
+            #heads = r2.history.get_head_ids()
+            #self.assertEqual(1, len(heads))
 
 
 

@@ -42,6 +42,19 @@ except ImportError:
         return json.dumps(d)
 
 else:
+
+
+    class Serializable:
+        pass
+
+        #@classmethod
+        #def representer(dumper, data):
+            #dumper.
+
+
+    #yaml.add_representer(Serializable, Serializable.representer)
+
+
     def read(filename):
         r = None
         with open(filename, 'r') as f:

@@ -12,6 +12,7 @@ from harmony.history import History
 from harmony.remotes import Remotes
 from harmony.repository_state_exception import RepositoryStateException
 from harmony.ruleset import Ruleset
+from harmony.working_directory import WorkingDirectory
 
 class Repository:
 
@@ -42,6 +43,7 @@ class Repository:
         repo.history = History.init(repo.harmony_directory)
         repo.ruleset = Ruleset.init(repo.harmony_directory)
         repo.remotes = Remotes.init(repo.harmony_directory)
+        repo.working_directory = WorkingDirectory(working_directory, repo.ruleset)
 
         repo.id = uuid.uuid1().hex
         repo.name = name
@@ -74,26 +76,43 @@ class Repository:
 
         repo.id = repo_config['id']
         repo.name = repo_config['name']
-        repo.revision = repo_config['revision']
 
         repo.history = History.load(repo.harmony_directory)
         repo.ruleset = Ruleset.load(repo.harmony_directory)
         repo.remotes = Remotes.load(repo.harmony_directory)
+        repo.working_directory = WorkingDirectory(working_directory, repo.ruleset)
+
         return repo
 
     @classmethod
     def clone(class_, working_directory, location, name = None):
-        r = class_.init(working_directory, name)
+        # Create empty repo $r in target location
+        target_repo = class_.init(working_directory, name)
 
         connection = protocols.connect(location)
-        repo = connection.get_repository()
-        r.remotes.add(location = connection.location, id_ = repo.get_id(), name = repo.get_name())
 
-        r.pull_state(remote_specs = [location])
-        r.write()
-        return r
-    
 
+        config_path = os.path.join(class_.HARMONY_SUBDIR, class_.REPOSITORY_FILE)
+        files = connection.pull_harmony_files([config_path])
+        source_config_file = files[config_path]
+
+        # Read remote repository configuration from downloaded file
+        source_config = serialization.read(source_config_file['local_path'])
+
+        # Add source repo as remote
+        target_repo.remotes.add(
+            location = location,
+            id_ = source_config['id'],
+            name = source_config['name']
+        )
+
+        source_config_file['cleanup']()
+
+        # Pull
+        target_repo.pull_state(remote_specs = [location])
+        target_repo.write()
+
+        return target_repo
 
     #
     # General-purpose classmethods
@@ -146,16 +165,16 @@ class Repository:
     #
     # =======================================================
 
-    def __init__(self,
-            working_directory,
-            harmony_directory = None
-            ):
-        self.working_directory = working_directory
+    def __init__(self, working_directory, harmony_directory = None):
+        """
+        This constructor alone is not sufficient to create a usable Repository
+        instance, use Repository.init or Repository.load.
+        """
         if harmony_directory is None:
             harmony_directory = Repository.find_harmony_directory(working_directory)
         self.harmony_directory = harmony_directory
-        self.revision = 0
-        
+
+
     def get_id(self):
         return self.id
 
@@ -170,11 +189,9 @@ class Repository:
         self.remotes.write()
         self.ruleset.write()
 
-
         d = {
                 'id': self.id,
                 'name': self.name,
-                'revision': self.revision,
                 }
         serialization.write(d, os.path.join(self.harmony_directory, Repository.REPOSITORY_FILE))
 
@@ -193,65 +210,40 @@ class Repository:
         if c is not None:
             raise RepositoryStateException("Working directory not clean, commit first.")
 
-    def commit(self, conflict_resolutions = None, dry_run = False):
+    def commit(self, dry_run = False):
         """
         DOCTODO
         """
+        working_directory = self.working_directory
 
-        c = self.history.create_commit()
-        parent = None
+        paths = working_directory.get_filenames()
 
-        # Copy repository info (remote file lists) from parent commits
-        #
+        # Create a commit based on the last known state
+        s = self.history.create_state(self.id)
 
-        if len(c.parents) == 1 or (len(c.parents) > 1 and conflict_resolutions is not None):
-            # TODO: Think about how to actually deal with conflict solutions
-            parent = self.history.get_commit(tuple(c.parents)[0])
-            c.update_repositories(parent)
-            c.inherit_files(parent)
+        # For all files in the commit, see if they have changed,
+        # update their hash and clocks accordingly.
 
-        elif len(c.parents) > 1:
-            # multiple parents?! We need to merge first!
-            raise RepositoryStateException("The repository is in a multi-head state, merge first.")
-        # Note: len(c.parents) == 0 can occur (first commit), and is fine.
-        
-        # Insert current repository state into commit
-        #
+        for file_state in s.iterate_file_states():
+            if working_directory.file_maybe_modified(file_state):
+                new_file_state = working_directory.generate_file_state(file_state.path)
+                s.update_file_state(new_file_state)
+            paths.remove(file_state.path)
 
-        hashed_files = {}
-        for file_info in self.ruleset.iterate_committable_files(self.working_directory):
-            fn = file_info.relative_filename
-            with open(file_info.absolute_filename, 'rb') as f:
-                digest = hashers.get_hasher(file_info.rule['hasher'])(f.read())
+        # Now scan all remaining files
+        for path in paths:
+            file_state = working_directory.generate_file_state(path)
+            s.update_file_state(file_state)
 
-            # If file changed since last commit, it is considered the newest
-            # version of the file and committed.
-            # (Independently of whether it matched the history version before)
-            #
-            # Otherwise, the history version is more recent, independently of
-            # whether this file matches or matched the history version (might
-            # have been outdated for several commits).
-
-            if parent is None or parent.get_file(fn) != digest:
-                c.update_file(fn, digest)
-            hashed_files[fn] = digest
-
-        c.update_repository(self, hashed_files)
-
-        if (len(c.parents) == 1 and parent is not None and c.equal_state(parent)) \
-                or (len(c.parents) == 0 and len(c.files) == 0):
-            if not dry_run:
-                logging.info('nothing changed.')
-
+        if not s.modified:
             return None
 
-        else:
-            if not dry_run:
-                self.history.add_head(c)
-                self.revision += 1
-                self.write()
+        if not dry_run:
+            self.history.write_state(s)
 
-            return c
+        return s
+
+
 
 
     def pull_state(self, remote_specs):
@@ -260,39 +252,43 @@ class Repository:
         single remote specification (as string)
         """
 
-        if isinstance(remote_specs, str):
-            remote_specs = (remote_specs, )
+        # TODO!
+        return []
 
-        #
-        # Preconditions
-        #
-        self.check_working_directory_clean()
+        #if isinstance(remote_specs, str):
+            #remote_specs = (remote_specs, )
 
-        assert isinstance(remote_specs, list) \
-                or isinstance(remote_specs, tuple)
+        ##
+        ## Preconditions
+        ##
+        #self.check_working_directory_clean()
 
-        uris = self.history.find_remotes(remote_specs)
-        connection = None
-        for uri in uris:
-            logging.info("pulling from {}...".format(uri))
-            connection = protocols.connect(uri)
+        #assert isinstance(remote_specs, list) \
+                #or isinstance(remote_specs, tuple)
 
-            if connection is not None:
-                break
+        #uris = [self.remotes.get_location_any(r) for r in remote_specs]
 
-        assert connection is not None
-        remote = connection.pull_state(self.history.commits_directory,
-                self.history.remote_heads_directory)
+        #connection = None
+        #for uri in uris:
+            #logging.info("pulling from {}...".format(uri))
+            #connection = protocols.connect(uri)
+
+            #if connection is not None:
+                #break
+
+        #assert connection is not None
+        #remote = connection.pull_state(self.history.commits_directory,
+                #self.history.remote_heads_directory)
         
-        commit, conflicts = self.history.merge_remote(remote.get_id())
+        #commit, conflicts = self.history.merge_remote(remote.get_id())
 
-        if len(conflicts) == 0 and commit is not None:
-            self.history.unset_merge_head_id()
-            self.history.add_head(commit)
+        #if len(conflicts) == 0 and commit is not None:
+            #self.history.unset_merge_head_id()
+            #self.history.add_head(commit)
             
-            #self.commit(conflict_resolutions = {})
+            ##self.commit(conflict_resolutions = {})
 
-        return conflicts
+        #return conflicts
 
 
 
@@ -317,7 +313,7 @@ class Repository:
             assert location is not None
             connection = protocols.connect(location)
             assert connection is not None
-            connection.pull_file(path, self.working_directory)
+            connection.pull_working_file((path,), self.working_directory.path)
 
 
         
