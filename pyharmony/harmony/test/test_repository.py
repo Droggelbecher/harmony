@@ -58,77 +58,21 @@ class TestRepository(TestCase):
                 J(tmpdir2, '.harmony', 'history')
                 )
 
-    #def test_commit_creates_new_head(self):
-        #with TempDir() as tmpdir1:
-            #r1 = Repository.init(tmpdir1)
-            #echo('hallo', tmpdir1, 'hallo.txt')
-            #r1.commit()
-            #head_path = J(tmpdir1, '.harmony', 'HEAD')
-            #self.assertFileExists(head_path)
-            #with open(head_path, 'r') as f:
-                #self.assertFileExists(tmpdir1, '.harmony', 'commits', f.read().strip())
-
-    def test_commit_without_changes_does_nothing(self):
+    def test_one_location_state_iff_there_have_been_local_commits_only(self):
         with TempDir() as tmpdir1:
             r1 = Repository.init(tmpdir1)
-            echo('hallo', tmpdir1, 'hallo.txt')
-            r1.commit()
-            commits = os.listdir(J(tmpdir1, '.harmony', 'history'))
-            self.assertEqual(1, len(commits))
+            location_states = os.listdir(J(tmpdir1, '.harmony', 'history'))
+            self.assertEqual(0, len(location_states))
 
-            r1.commit()
-            commits2 = os.listdir(J(tmpdir1, '.harmony', 'history'))
-            self.assertCountEqual(commits, commits2)
-
-    def test_commit_with_changes_does_something(self):
-        with TempDir() as tmpdir1:
-            r1 = Repository.init(tmpdir1)
             echo('hallo', J(tmpdir1, 'hallo.txt'))
             r1.commit()
-            commits = os.listdir(J(tmpdir1, '.harmony', 'history'))
-            self.assertEqual(1, len(commits))
+            location_states = os.listdir(J(tmpdir1, '.harmony', 'history'))
+            self.assertEqual(1, len(location_states))
 
             echo('hallo, welt', J(tmpdir1, 'hallo.txt'))
             r1.commit()
-            commits2 = os.listdir(J(tmpdir1, '.harmony', 'history'))
-            self.assertEqual(2, len(commits2))
-
-    #def test_pull_state_gets_all_commits(self):
-        #with TempDir() as tmpdir1, TempDir() as tmpdir2:
-
-            ## Create R1 with a number of commits
-            ##
-
-            #r1 = Repository.init(tmpdir1)
-
-            #echo('hallo', J(tmpdir1, 'hallo.txt'))
-            #r1.commit()
-
-            #echo('hello', J(tmpdir1, 'hello.txt'))
-            #r1.commit()
-
-            #echo('Hallo, Welt', J(tmpdir1, 'hallo.txt'))
-            #r1.commit()
-
-            #echo('Hallo, Welt!', J(tmpdir1, 'hallo.txt'))
-            #echo('Hello, World!', J(tmpdir1, 'hello.txt'))
-            #r1.commit()
-
-            ## Create R2 and pull state from R1
-            ##
-
-            #r2 = Repository.init(tmpdir2)
-            #r2.pull_state(tmpdir1)
-
-            #self.assertDirectoriesEqual(
-                    #J(tmpdir1, '.harmony', 'commits'),
-                    #J(tmpdir2, '.harmony', 'commits')
-                    #)
-
-            #self.assertFileContentsEqual(
-                    #J(tmpdir1, '.harmony', 'HEAD'),
-                    #J(tmpdir2, '.harmony', 'remote-heads', r1.get_id())
-                    #)
+            location_states = os.listdir(J(tmpdir1, '.harmony', 'history'))
+            self.assertEqual(1, len(location_states))
 
     def test_pull_state_finds_conflicts(self):
         with TempDir() as tmpdir1, TempDir() as tmpdir2:

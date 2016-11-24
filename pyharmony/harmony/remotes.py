@@ -29,7 +29,7 @@ class Remotes(FileComponent):
             return s
 
     def get_location(self, id_ = None, name = None):
-        if id_ is not None and id_ in self['by_id']:
+        if id_ is not None and id_ in self.state['by_id']:
             return self.state['by_id'][id_]
         if name is not None and name in self.state['by_name']:
             return self.state['by_name'][name]

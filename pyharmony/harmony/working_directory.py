@@ -30,8 +30,9 @@ class WorkingDirectory:
         can be assumed the file has not changed. If it returns True it might or
         might not have been changed.
         """
-        mtime = os.path.getmtime(file_state.path)
-        size = os.path.getsize(file_state.path)
+        path = os.path.join(self.path, file_state.path)
+        mtime = os.path.getmtime(path)
+        size = os.path.getsize(path)
 
         # TODO: proper error handling (warn that there might be a clock
         # screwup)

@@ -38,7 +38,8 @@ class DirectoryComponent(HarmonyComponent):
 
     def read(self, path):
         self.state = {}
-        for filename in glob.glob(os.path.join(path, '*')):
+        self.path = path
+        for filename in os.listdir(path):
             self.state[filename] = self.read_item(os.path.join(path, filename))
 
     def read_item(self, path):
@@ -46,15 +47,16 @@ class DirectoryComponent(HarmonyComponent):
 
     def write(self):
         for k, v in self.state.items():
-            self.write_item(v, k)
+            self.write_item(v, os.path.join(self.path, k))
 
     def write_item(self, data, path):
-        serialization.write(v, k)
+        serialization.write(v, path)
 
 class FileComponent(HarmonyComponent):
 
     def read(self, path):
         self.state = serialization.read(path)
+        self.path = path
 
     def write(self):
         serialization.write(self.state, self.path)

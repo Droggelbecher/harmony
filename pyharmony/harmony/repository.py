@@ -4,6 +4,7 @@ import os.path
 import socket
 import logging
 import uuid
+from collections import defaultdict
 
 from harmony import hashers
 from harmony import protocols
@@ -13,6 +14,7 @@ from harmony.remotes import Remotes
 from harmony.repository_state_exception import RepositoryStateException
 from harmony.ruleset import Ruleset
 from harmony.working_directory import WorkingDirectory
+from harmony.file_state import FileState
 
 class Repository:
 
@@ -102,11 +104,10 @@ class Repository:
         target_repo = class_.init(working_directory, name)
         config_path = os.path.join(class_.HARMONY_SUBDIR, class_.REPOSITORY_FILE)
 
-        connection = protocols.connect(location)
-        files = connection.pull_harmony_files([config_path])
-        source_config_file = files[config_path]
-        # Read remote repository configuration from downloaded file
-        source_config = serialization.read(source_config_file['local_path'])
+        with protocols.connect(location) as connection:
+            files = connection.pull_harmony_files([config_path])
+            # Read remote repository configuration from downloaded file
+            source_config = serialization.read(files[config_path])
 
         # Add source repo as remote
         target_repo.remotes.add(
@@ -115,10 +116,8 @@ class Repository:
             name = source_config['name']
         )
 
-        source_config_file['cleanup']()
-
         # Pull
-        target_repo.pull_state(remote_specs = [location])
+        target_repo.pull_state(location)
         target_repo.write()
 
         return target_repo
@@ -223,6 +222,10 @@ class Repository:
         """
         DOCTODO
         """
+
+        # TODO: Detect renames and generate WIPE entries accordingly (see
+        # design/design_questions.txt)
+
         working_directory = self.working_directory
 
         paths = working_directory.get_filenames()
@@ -253,25 +256,127 @@ class Repository:
         return True
 
 
-    def pull_state(self, remote_specs):
+    def pull_state(self, remote_spec):
         """
         @param remote_specs list() or tuple() of remote specifications or a
         single remote specification (as string)
         """
+        config_path = os.path.join(self.HARMONY_SUBDIR, self.REPOSITORY_FILE)
         states_path = LocationState.get_path(self.HARMONY_SUBDIR)
 
+        # TODO: How to even pull from many locations?
+        #
+        location = self.remotes.get_location_any(remote_spec)
 
-        # TODO: turn remote_spec into proper URL
-        location = remote_specs[0] # XXX
+        with protocols.connect(location) as connection:
+            files = connection.pull_harmony_files([config_path, states_path])
+            remote_id = serialization.read(files[config_path])['id']
+            remote_history = LocationState.load(files[states_path])
 
-        connection = protocols.connect(location)
-        files = connection.pull_harmony_files([states_path])
-        states_dir = files[states_path]
-        # Read remote repository configuration from downloaded file
-        remote_history = LocationState.load(states_dir['local_path'])
+        conflicts, new_state = self.merge(remote_id, remote_history)
 
-        # TODO!
-        return []
+        # TODO: make these nicer (without outside access to $state)
+        self.location_state.state.update(new_state)
+
+        self.location_state.write()
+
+        print('conflicts={}'.format(conflicts))
+        return conflicts
+
+
+    def merge(self, remote_id, remote_location_state):
+
+        paths = set(self.location_state.get_all_paths()).union(
+            remote_location_state.get_all_paths()
+        )
+
+        locations = set(self.location_state.get_locations()).union(
+            remote_location_state.get_locations()
+        )
+
+        conflicts = {}
+
+        rec_dd = lambda: defaultdict(rec_dd)
+        new_state = rec_dd()
+
+        # TODO: handle WIPE entries
+
+        for path in paths:
+            entries = set()
+
+            for location in locations:
+                # "entry" here means FileState
+                # For each path/location combo, we have a local "idea" of what
+                # the state of that file at that location is and one remote.
+                # This is to figure out which entry to use in which case.
+
+                local_entry = self.location_state.get_file_state(remote_id, path)
+                remote_entry = remote_location_state.get_file_state(remote_id, path)
+
+                assert not (local_entry is None and remote_entry is None)
+
+                new_entry = None
+                if local_entry is None:
+                    new_entry = remote_entry
+
+                elif remote_entry is None:
+                    new_entry = local_entry
+
+                # Yes it should have, if we assume that is correct, it should
+                # also work with just the else branch though.
+                # If we want a thorough plausibility check that should probably
+                # be a seperate function anyway.
+                elif location == self.id:
+                    # Local location hast most up to date info on itself
+                    # TODO: assert clock says the same thing
+                    new_entry = local_entry
+
+                # Remote doesnt always have an id.
+                # We dont always have a remote id.
+                # We could get it by pulling the remotes config, however this
+                # branch should anyways be covered by the one below.
+                elif location == remote_id:
+                    new_entry = remote_entry
+
+                else:
+                    comparison = local_entry.compare_clock(remote_entry)
+
+                    if comparison == 0:
+                        # if clocks are equal, than digest, size and mtime should
+                        # be, too.
+                        assert local_entry.digest == remote_entry.digest
+                        assert local_entry.size == remote_entry.size
+                        assert local_entry.mtime == remote_entry.mtime
+                        # Any will do
+                        new_entry = local_entry
+
+                    elif comparison < 0:
+                        new_entry = remote_entry
+
+                    elif comparison > 0:
+                        new_entry = local_entry
+
+                    else: # uncomparable / None
+                        # This means that not only are there two different
+                        # views on what the state of $path in $location is,
+                        # This should not be possible if the clock values were
+                        # only manipulated by $location. See
+                        # design/design_questions.txt ("How did this merge work?")
+                        assert False
+
+                new_state[location]['files'][path] = new_entry
+                entries.add(new_entry)
+
+            heads = FileState.get_heads(entries)
+            assert len(heads) >= 1
+            if len(heads) > 1:
+                conflicts[path] = heads
+
+        for location_id, d in new_state.items():
+            d['location'] = location_id
+            d['modified'] = True
+
+        return conflicts, new_state
 
         #if isinstance(remote_specs, str):
             #remote_specs = (remote_specs, )
@@ -325,7 +430,6 @@ class Repository:
         )
 
         for repository in candidate_repositories:
-            #print(repository['id'], repository['name'])
             location = self.remotes.get_location(id_ = repository['id'], name
                     = repository['name'])
             assert location is not None

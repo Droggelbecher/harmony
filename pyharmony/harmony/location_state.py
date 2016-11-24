@@ -20,7 +20,8 @@ class LocationState(DirectoryComponent):
                 'modified': True
             }
 
-    def write_item(self, data, path):
+    def write_item(self, obj, path):
+        data = obj
         d = {
             'location': data['location'],
             'last_modification': datetime_to_iso(datetime.datetime.now())
@@ -31,6 +32,7 @@ class LocationState(DirectoryComponent):
                     'digest': v.digest,
                     'size': v.size,
                     'mtime': v.mtime,
+                    'clock': v.clock,
                 } for k, v in data['files'].items()
             },
         }
@@ -41,11 +43,26 @@ class LocationState(DirectoryComponent):
         data['files'] = {kws['path']: FileState(**kws) for kws in data['files'].values()}
         return data
 
+    def get_file_state(self, id_, path):
+        return self.state.get(id_, { 'files': {} })['files'].get(path, None)
+
+    def get_all_paths(self):
+        r = set()
+        for d in self.state.values():
+            r.update(set(d['files'].keys()))
+        return r
+
+    def get_locations(self):
+        return self.state.keys()
+
     def iterate_file_states(self, id_):
-        return self.state[id_]['files'].values()
+        return self.state.get(id_, { 'files': {} })['files'].values()
 
     def update_file_state(self, id_, file_state):
+
         # TODO: Clocks!!!
+        # TODO: Also look into other locations for this file to get clock
+        # values if its not in local location
         #
         p = file_state.path
         files = self.state[id_]['files']
