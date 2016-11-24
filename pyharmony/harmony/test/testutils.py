@@ -47,7 +47,20 @@ class TestCase(unittest.TestCase):
         files_dir2 = set(os.listdir(dir2))
 
         if files_dir1 != files_dir2:
-            self.fail('{}: filelists of {} and {} do not match.'.format(failure_base, dir1, dir2))
+            s = '''{}: filelists of
+{}
+and
+{}
+do not match.
+In first but not second:
+{}
+In second but not first:
+{}
+'''.format(failure_base, dir1, dir2,
+           '  ' + ('\n  '.join(f for f in (files_dir1 - files_dir2)) or '(None)'),
+           '  ' + ('\n  '.join(f for f in (files_dir2 - files_dir1)) or '(None)'),
+          )
+            self.fail(s)
 
         directories = [f for f in files_dir1 if os.path.isdir(os.path.join(dir1, f))]
         for directory in directories:

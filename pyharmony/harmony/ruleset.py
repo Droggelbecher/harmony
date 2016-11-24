@@ -1,20 +1,22 @@
 
-from harmony import hashers
 import os
 import re
-from harmony import serialization
 import fnmatch
 
-class Ruleset:
+from harmony import hashers
+from harmony import serialization
+from harmony.harmony_component import FileComponent
 
-    RULES_FILE = 'rules'
+class Ruleset(FileComponent):
+
+    RELATIVE_PATH = 'rules'
 
     class FileInfo:
         pass
 
     @classmethod
-    def init(class_, harmony_directory):
-        r = class_(harmony_directory)
+    def init(class_, path):
+        r = super(Ruleset, class_).init(path)
 
         r.add_rule(
                 match = {},
@@ -36,16 +38,12 @@ class Ruleset:
                 )
 
         r.write()
-
         return r
 
     @classmethod
-    def load(class_, harmony_directory):
-        r = class_(harmony_directory)
-        rules_data = serialization.read(r.rules_file)
-        r.rules = rules_data['rules']
-        assert len(r.rules) > 0
-
+    def load(class_, path):
+        r = super(Ruleset, class_).load(path)
+        assert len(r.state['rules']) > 0
         return r
 
     @staticmethod
@@ -123,10 +121,13 @@ class Ruleset:
                 return True
         return False
 
-    def __init__(self, harmony_directory):
-        self.harmony_directory = harmony_directory
-        self.rules = []
-        self.rules_file = os.path.join(self.harmony_directory, Ruleset.RULES_FILE)
+    def __init__(self, path):
+        super().__init__(path)
+        self.state = {
+            'rules': []
+        }
+        #self.rules = []
+        #self.rules_file = os.path.join(self.harmony_directory, Ruleset.RULES_FILE)
         self.matchers = {
                 'path': Ruleset.match_path,
                 'dirname': Ruleset.match_directory,
@@ -157,7 +158,7 @@ class Ruleset:
         result = {
                 'commit': True
                 }
-        for rule in self.rules:
+        for rule in self.state['rules']:
             matches = True
             for matcher, parameters in rule['match'].items():
                 if not self.matchers[matcher](relfn, parameters):
@@ -173,12 +174,6 @@ class Ruleset:
 
 
     def add_rule(self, **kws):
-        self.rules.append(kws)
-
-    def write(self):
-        d = {
-                'rules': self.rules
-                }
-        serialization.write(d, self.rules_file)
+        self.state['rules'].append(kws)
 
 

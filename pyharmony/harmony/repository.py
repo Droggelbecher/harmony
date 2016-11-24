@@ -8,7 +8,7 @@ import uuid
 from harmony import hashers
 from harmony import protocols
 from harmony import serialization
-from harmony.history import History
+from harmony.location_state import LocationState
 from harmony.remotes import Remotes
 from harmony.repository_state_exception import RepositoryStateException
 from harmony.ruleset import Ruleset
@@ -39,10 +39,17 @@ class Repository:
 
         os.mkdir(harmony_directory)
 
+
         repo = Repository(working_directory, harmony_directory)
-        repo.history = History.init(repo.harmony_directory)
-        repo.ruleset = Ruleset.init(repo.harmony_directory)
-        repo.remotes = Remotes.init(repo.harmony_directory)
+
+        def make_component(class_):
+            return class_.init(
+                class_.get_path(repo.harmony_directory)
+            )
+
+        repo.location_state = make_component(LocationState)
+        repo.ruleset = make_component(Ruleset)
+        repo.remotes = make_component(Remotes)
         repo.working_directory = WorkingDirectory(working_directory, repo.ruleset)
 
         repo.id = uuid.uuid1().hex
@@ -77,9 +84,14 @@ class Repository:
         repo.id = repo_config['id']
         repo.name = repo_config['name']
 
-        repo.history = History.load(repo.harmony_directory)
-        repo.ruleset = Ruleset.load(repo.harmony_directory)
-        repo.remotes = Remotes.load(repo.harmony_directory)
+        def load_component(class_):
+            return class_.load(
+                class_.get_path(repo.harmony_directory)
+            )
+
+        repo.location_state = load_component(LocationState)
+        repo.ruleset = load_component(Ruleset)
+        repo.remotes = load_component(Remotes)
         repo.working_directory = WorkingDirectory(working_directory, repo.ruleset)
 
         return repo
@@ -88,14 +100,11 @@ class Repository:
     def clone(class_, working_directory, location, name = None):
         # Create empty repo $r in target location
         target_repo = class_.init(working_directory, name)
+        config_path = os.path.join(class_.HARMONY_SUBDIR, class_.REPOSITORY_FILE)
 
         connection = protocols.connect(location)
-
-
-        config_path = os.path.join(class_.HARMONY_SUBDIR, class_.REPOSITORY_FILE)
         files = connection.pull_harmony_files([config_path])
         source_config_file = files[config_path]
-
         # Read remote repository configuration from downloaded file
         source_config = serialization.read(source_config_file['local_path'])
 
@@ -185,7 +194,7 @@ class Repository:
         return self.url
 
     def write(self):
-        #self.history.write()
+        self.location_state.write()
         self.remotes.write()
         self.ruleset.write()
 
@@ -219,31 +228,29 @@ class Repository:
         paths = working_directory.get_filenames()
 
         # Create a commit based on the last known state
-        s = self.history.create_state(self.id)
+        self.location_state.create_state(self.id)
 
         # For all files in the commit, see if they have changed,
         # update their hash and clocks accordingly.
 
-        for file_state in s.iterate_file_states():
+        for file_state in self.location_state.iterate_file_states(self.id):
             if working_directory.file_maybe_modified(file_state):
                 new_file_state = working_directory.generate_file_state(file_state.path)
-                s.update_file_state(new_file_state)
+                self.location_state.update_file_state(self.id, new_file_state)
             paths.remove(file_state.path)
 
         # Now scan all remaining files
         for path in paths:
             file_state = working_directory.generate_file_state(path)
-            s.update_file_state(file_state)
+            self.location_state.update_file_state(self.id, file_state)
 
-        if not s.modified:
-            return None
+        if not self.location_state.was_modified(self.id):
+            return False
 
         if not dry_run:
-            self.history.write_state(s)
+            self.location_state.write()
 
-        return s
-
-
+        return True
 
 
     def pull_state(self, remote_specs):
@@ -251,6 +258,17 @@ class Repository:
         @param remote_specs list() or tuple() of remote specifications or a
         single remote specification (as string)
         """
+        states_path = LocationState.get_path(self.HARMONY_SUBDIR)
+
+
+        # TODO: turn remote_spec into proper URL
+        location = remote_specs[0] # XXX
+
+        connection = protocols.connect(location)
+        files = connection.pull_harmony_files([states_path])
+        states_dir = files[states_path]
+        # Read remote repository configuration from downloaded file
+        remote_history = LocationState.load(states_dir['local_path'])
 
         # TODO!
         return []

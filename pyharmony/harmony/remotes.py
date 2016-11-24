@@ -1,42 +1,23 @@
 
 import os.path
 from harmony import serialization
+from harmony.harmony_component import FileComponent
 
+class Remotes(FileComponent):
 
-class Remotes:
+    RELATIVE_PATH = 'remotes'
 
-    @classmethod
-    def init(class_, harmony_directory):
-        r = class_(harmony_directory)
-        r.write()
-        return r
-    
-    @classmethod
-    def load(class_, harmony_directory):
-        r = class_(harmony_directory)
-        data = serialization.read(r.remotes_path)
-
-        r.by_name = data['by_name']
-        r.by_id = data['by_id']
-        return r
-
-
-    def __init__(self, harmony_directory):
-        self.by_name = {}
-        self.by_id = {}
-        self.remotes_path = os.path.join(harmony_directory, 'remotes')
+    def __init__(self, path):
+        super().__init__(path)
+        self.state = {
+            'by_name': {},
+            'by_id': {}
+        }
 
     def add(self, location, id_, name = None):
         if name is not None:
-            self.by_name[name] = location
-        self.by_id[id_] = location
-
-    def write(self):
-        d = {
-                'by_name': self.by_name,
-                'by_id': self.by_id
-                }
-        serialization.write(d, self.remotes_path)
+            self.state['by_name'][name] = location
+        self.state['by_id'][id_] = location
 
     def get_location_any(self, s):
         """
@@ -48,17 +29,17 @@ class Remotes:
             return s
 
     def get_location(self, id_ = None, name = None):
-        if id_ is not None and id_ in self.by_id:
-            return self.by_id[id_]
-        if name is not None and name in self.by_name:
-            return self.by_name[name]
+        if id_ is not None and id_ in self['by_id']:
+            return self.state['by_id'][id_]
+        if name is not None and name in self.state['by_name']:
+            return self.state['by_name'][name]
         return None
         #raise Exception('Location (id={}, name={}) not found.'
                         #.format(id_, name))
 
     def get_locations(self):
-        s = set(self.by_name.values())
-        s.update(self.by_id.values())
+        s = set(self.state['by_name'].values())
+        s.update(self.state['by_id'].values())
         return s
 
 

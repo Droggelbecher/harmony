@@ -3,46 +3,56 @@ import datetime
 from harmony.util import datetime_to_iso, iso_to_datetime
 from harmony import serialization
 from harmony.file_state import FileState
+from harmony.harmony_component import DirectoryComponent
 
-class LocationState:
+class LocationState(DirectoryComponent):
 
-    @classmethod
-    def load(class_, path):
-        data = serialization.read(path)
-        r = class_(data['location'])
-        r.last_modification = data['last_modification']
+    RELATIVE_PATH = 'history'
 
-        # TODO: normalize kws['path'] on loading
-        r.files = {kws['path']: FileState(**kws) for kws in data['files'].values()}
+    def __init__(self, path):
+        super().__init__(path)
 
-    def __init__(self, location):
-        self.location = location
-        self.files = {}
-        self.modified = False
+    def create_state(self, location_id):
+        if location_id not in self.state:
+            self.state[location_id] = {
+                'location': location_id,
+                'files': {},
+                'modified': True
+            }
 
-    def write(self, path):
+    def write_item(self, data, path):
         d = {
-            'location': self.location,
-            'last_modification': datetime_to_iso(datetime.datetime.now()) if self.modified else self.last_modification,
+            'location': data['location'],
+            'last_modification': datetime_to_iso(datetime.datetime.now())
+                if data.get('modified', False) else data['last_modification'],
             'files': {
                 k: {
                     'path': v.path,
                     'digest': v.digest,
                     'size': v.size,
                     'mtime': v.mtime,
-                } for k, v in self.files.items()
+                } for k, v in data['files'].items()
             },
         }
         serialization.write(d, path)
 
-    def iterate_file_states(self):
-        return self.files
+    def read_item(self, path):
+        data = serialization.read(path)
+        data['files'] = {kws['path']: FileState(**kws) for kws in data['files'].values()}
+        return data
 
-    def update_file_state(self, file_state):
+    def iterate_file_states(self, id_):
+        return self.state[id_]['files'].values()
+
+    def update_file_state(self, id_, file_state):
         # TODO: Clocks!!!
         #
         p = file_state.path
-        if p not in self.files or file_state.contents_different(self.files[p]):
-            self.files[p] = file_state
-            self.modified = True
+        files = self.state[id_]['files']
+        if p not in files or file_state.contents_different(files[p]):
+            files[p] = file_state
+            self.state[id_]['modified'] = True
+
+    def was_modified(self, id_):
+        return self.state[id_]['modified']
 

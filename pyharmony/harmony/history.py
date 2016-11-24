@@ -6,46 +6,36 @@ import datetime
 import logging
 
 from harmony import protocols
-from harmony.commit import Commit
 from harmony import serialization
 from harmony.location_state import LocationState
+from harmony.harmony_component import DirectoryComponent
 
-class History:
+class History(DirectoryComponent):
 
-    LOCATION_STATE_SUBDIR = 'location_states'
+    RELATIVE_PATH = 'history'
 
-    @classmethod
-    def init(class_, harmony_directory):
-        """
-        Create a new history, within the given harmony directory.
-        """
-        states_directory = os.path.join(harmony_directory, class_.LOCATION_STATE_SUBDIR)
-        os.mkdir(states_directory)
-        h = History(harmony_directory)
-        return h
+    def __init__(self, path):
+        super().__init__(path)
+        self.state = {}
 
-    @classmethod
-    def load(class_, harmony_directory):
-        h = History(harmony_directory)
-        return h
+    def read(self, path):
+        TODO
 
-    def __init__(self, harmony_directory):
-        self.harmony_directory = harmony_directory
-        self.states_directory = os.path.join(harmony_directory, History.LOCATION_STATE_SUBDIR)
+    def write(self):
+        for location_state in self.location_states.values():
+            self.write_state(location_state)
+
+    def write_state(self, s):
+        s.write(os.path.join(self.path, s.location))
 
     def create_state(self, location):
         try:
             s = self.read_state(location)
         except FileNotFoundError:
             s = None
-
         return s if s is not None else LocationState(location = location)
 
-    def read_state(self, location):
-        #s = serialization.read(os.path.join(self.states_directory, location))
-        return LocationState.load(os.path.join(self.states_directory, location))
-
-    def write_state(self, s):
-        s.write(os.path.join(self.states_directory, s.location))
-
+    #def read_state(self, location):
+        ##s = serialization.read(os.path.join(self.states_directory, location))
+        #return LocationState.load(os.path.join(self.states_directory, location))
 

@@ -17,7 +17,7 @@ class WorkingDirectory:
         return r
 
 
-    def file_maybe_modified(self, relative_ptah):
+    def file_maybe_modified(self, file_state):
         """
         Return True if the file $file_info.path suggests that it might have
         been modified since file_info was generated.
