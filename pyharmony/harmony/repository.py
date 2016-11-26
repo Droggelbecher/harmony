@@ -16,6 +16,8 @@ from harmony.ruleset import Ruleset
 from harmony.working_directory import WorkingDirectory
 from harmony.file_state import FileState
 
+logger = logging.getLogger(__name__)
+
 class Repository:
 
     HARMONY_SUBDIR = '.harmony'
@@ -245,13 +247,17 @@ class Repository:
             file_state = self.location_state.get_latest_file_state(path)
             if working_directory.file_maybe_modified(file_state):
                 new_file_state = working_directory.generate_file_state(file_state.path)
+                logger.debug('{} committing : {}'.format(self.id, new_file_state.path))
                 self.location_state.update_file_state(self.id, new_file_state)
+            else:
+                logger.debug('{} not changed: {}'.format(self.id, path))
 
         if not self.location_state.was_modified(self.id):
             return False
 
         if not dry_run:
             self.location_state.write()
+            self.location_state.increment_clock(self.id)
 
         return True
 
@@ -261,175 +267,67 @@ class Repository:
         @param remote_specs list() or tuple() of remote specifications or a
         single remote specification (as string)
         """
-        config_path = os.path.join(self.HARMONY_SUBDIR, self.REPOSITORY_FILE)
-        states_path = LocationState.get_path(self.HARMONY_SUBDIR)
+        self.fetch(remote_spec)
+        conflicts = self.find_conflicts()
 
-        # TODO: How to even pull from many locations?
-        #
-        location = self.remotes.get_location_any(remote_spec)
-
-        with protocols.connect(location) as connection:
-            files = connection.pull_harmony_files([config_path, states_path])
-            remote_id = serialization.read(files[config_path])['id']
-            remote_history = LocationState.load(files[states_path])
-
-        conflicts = self.merge(remote_id, remote_history)
-
-        # TODO: make these nicer (without outside access to $state)
-        #self.location_state.state.update(new_state)
-
-        self.location_state.write()
-
-        print('conflicts={}'.format(conflicts))
+        logger.debug('conflicts={}'.format(conflicts))
         return conflicts
 
 
-    def fetch(self, remote_state):
-        # TODO: Just copy over all newer remote states,
-        # state about local repo should never be overwritten by this operation.
+    def fetch(self, remote_spec):
+        location = self.remotes.get_location_any(remote_spec)
+
+        logger.debug('{} fetching from {} which is at {}'.format(
+            self.id, remote_spec, location
+        ))
+
+        #config_path = os.path.join(self.HARMONY_SUBDIR, self.REPOSITORY_FILE)
+        states_path = LocationState.get_path(self.HARMONY_SUBDIR)
+
+        with protocols.connect(location) as connection:
+            files = connection.pull_harmony_files([states_path])
+            #remote_id = serialization.read(files[config_path])['id']
+            remote_state = LocationState.load(files[states_path])
+
+        logger.debug('{} fetched remote state:'.format(self.id))
+        for lid, d in remote_state.state.items():
+            logger.debug('  {}:'.format(lid))
+            for f in d['files'].values():
+                logger.debug('    {}'.format(f))
+
+        self.location_state.update(remote_state)
+        self.location_state.write()
 
 
     def find_conflicts(self):
-        # TODO: Find all conflicts (situations where there is more than one
-        # head for a file)
-        # Note: resolving conflicts is than done by a commit()
+        logger.debug('self.id={}'.format(self.id))
 
-
-    def merge(self, remote_id, remote_location_state):
-        # TODO: refactor this into fetch() and find_conflicts()
-        # to reduce my own confusion about what this is supposed to do
-
-        remote_locations = remote_location_state.get_locations()
-        local_locations = self.location_state.get_locations()
-
-        paths = set(self.location_state.get_all_paths()).union(
-            remote_location_state.get_all_paths()
-        )
-
-        locations = set(self.location_state.get_locations()).union(
-            remote_location_state.get_locations()
-        )
+        paths = self.location_state.get_all_paths()
+        locations = self.location_state.get_locations()
+        state = self.location_state
 
         conflicts = {}
-
-        #rec_dd = lambda: defaultdict(rec_dd)
-        #new_state = rec_dd()
 
         # TODO: handle WIPE entries
 
         for path in paths:
-            entries = set()
+            file_states = set(
+                state.get_file_state(id_, path)
+                for id_ in locations
+            )
+            assert len(file_states) >= 1
 
-            for location in locations:
-                # "entry" here means FileState
-                # For each path/location combo, we have a local "idea" of what
-                # the state of that file at that location is and one remote.
-                # This is to figure out which entry to use in which case.
+            logger.debug('path={} states={}'.format(path, file_states))
 
-                local_entry = self.location_state.get_file_state(self.id, path)
-                remote_entry = remote_location_state.get_file_state(remote_id, path)
-
-                assert not (local_entry is None and remote_entry is None)
-
-                new_entry = None
-                if local_entry is None:
-                    new_entry = remote_entry
-
-                elif remote_entry is None:
-                    new_entry = local_entry
-
-                # Yes it should have, if we assume that is correct, it should
-                # also work with just the else branch though.
-                # If we want a thorough plausibility check that should probably
-                # be a seperate function anyway.
-                elif location == self.id:
-                    # Local location hast most up to date info on itself
-                    # TODO: assert clock says the same thing
-                    new_entry = local_entry
-
-                # Remote doesnt always have an id.
-                # We dont always have a remote id.
-                # We could get it by pulling the remotes config, however this
-                # branch should anyways be covered by the one below.
-                elif location == remote_id:
-                    new_entry = remote_entry
-
-                else:
-                    comparison = local_entry.compare_clock(remote_entry)
-
-                    if comparison == 0:
-                        # if clocks are equal, than digest, size and mtime should
-                        # be, too.
-                        assert local_entry.digest == remote_entry.digest
-                        assert local_entry.size == remote_entry.size
-                        assert local_entry.mtime == remote_entry.mtime
-                        # Any will do
-                        new_entry = local_entry
-
-                    elif comparison < 0:
-                        new_entry = remote_entry
-
-                    elif comparison > 0:
-                        new_entry = local_entry
-
-                    else: # uncomparable / None
-                        # This means that not only are there two different
-                        # views on what the state of $path in $location is,
-                        # This should not be possible if the clock values were
-                        # only manipulated by $location. See
-                        # design/design_questions.txt ("How did this merge work?")
-                        assert False
-
-                self.location_state.update_file_state(self.id, new_entry)
-                #new_state[location]['files'][path] = new_entry
-                entries.add(new_entry)
-
-            heads = FileState.get_heads(entries)
+            heads = FileState.get_heads(file_states)
             assert len(heads) >= 1
-            if len(heads) > 1:
+
+            logger.debug('path={}  heads={}'.format(path, heads))
+
+            if len(heads) >= 2:
                 conflicts[path] = heads
 
-        #for location_id, d in new_state.items():
-            #d['location'] = location_id
-            #d['modified'] = True
-
-        return conflicts #, new_state
-
-        #if isinstance(remote_specs, str):
-            #remote_specs = (remote_specs, )
-
-        ##
-        ## Preconditions
-        ##
-        #self.check_working_directory_clean()
-
-        #assert isinstance(remote_specs, list) \
-                #or isinstance(remote_specs, tuple)
-
-        #uris = [self.remotes.get_location_any(r) for r in remote_specs]
-
-        #connection = None
-        #for uri in uris:
-            #logging.info("pulling from {}...".format(uri))
-            #connection = protocols.connect(uri)
-
-            #if connection is not None:
-                #break
-
-        #assert connection is not None
-        #remote = connection.pull_state(self.history.commits_directory,
-                #self.history.remote_heads_directory)
-        
-        #commit, conflicts = self.history.merge_remote(remote.get_id())
-
-        #if len(conflicts) == 0 and commit is not None:
-            #self.history.unset_merge_head_id()
-            #self.history.add_head(commit)
-            
-            ##self.commit(conflict_resolutions = {})
-
-        #return conflicts
-
+        return conflicts
 
 
     def pull_file(self, path):

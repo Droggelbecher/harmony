@@ -82,22 +82,26 @@ class TestRepository(TestCase):
 
             r1 = Repository.init(tmpdir1)
 
+            # -- 1 --
             echo('hallo', J(tmpdir1, 'hallo.txt'))
             r1.commit()
 
             r2 = Repository.clone(tmpdir2, tmpdir1)
 
+            # -- 1 --
             echo('hello', J(tmpdir1, 'hello.txt'))
             r1.commit()
 
+            # -- 1 --
             echo('Hallo, Welt', J(tmpdir1, 'hallo.txt'))
             r1.commit()
 
+            # -- 1 --
             echo('Hallo, Welt!', J(tmpdir1, 'hallo.txt'))
             echo('Hello, World!', J(tmpdir1, 'hello.txt'))
             r1.commit()
 
-
+            # -- 2 --
             echo("Guten Tag, Welt!", J(tmpdir2, 'hallo.txt'))
             echo("Hello, World!!", J(tmpdir2, 'hello.txt'))
             r2.commit()
@@ -136,7 +140,7 @@ class TestRepository(TestCase):
 
             # --- R2
 
-            # Same content as on R!
+            # Same content as on R1
             echo('Hello, World!', J(tmpdir2, 'hello.txt'))
             r2.commit()
 
@@ -148,6 +152,12 @@ class TestRepository(TestCase):
             #heads = r2.history.get_head_ids()
             #self.assertEqual(1, len(heads))
 
+    # TODO:
+    # - file deletion
+    # - file moving/renaming
+    # - multiple files with same contents
+    # - that also in the presence of moving/deletion
+    # - actual file transfer
 
 
     #def test_pull_file_gets_file(self):
@@ -162,6 +172,6 @@ class TestRepository(TestCase):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level = logging.DEBUG, format = '[{levelname:7s}] {message:s}', style = '{')
+    logging.basicConfig(level = logging.DEBUG, format = '{levelname:7s} {module:15s}:{funcName:15s} | {message:s}', style = '{')
     unittest.main()
 
