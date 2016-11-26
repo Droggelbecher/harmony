@@ -52,11 +52,14 @@ class TestCase(unittest.TestCase):
 and
 {}
 do not match.
+In both:
+{}
 In first but not second:
 {}
 In second but not first:
 {}
 '''.format(failure_base, dir1, dir2,
+           '  ' + ('\n  '.join(f for f in (files_dir1 & files_dir2)) or '(None)'),
            '  ' + ('\n  '.join(f for f in (files_dir1 - files_dir2)) or '(None)'),
            '  ' + ('\n  '.join(f for f in (files_dir2 - files_dir1)) or '(None)'),
           )

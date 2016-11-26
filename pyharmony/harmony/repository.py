@@ -233,19 +233,19 @@ class Repository:
         # Create a commit based on the last known state
         self.location_state.create_state(self.id)
 
-        # For all files in the commit, see if they have changed,
-        # update their hash and clocks accordingly.
+        # Now go consider all the files that are in our record (and might or
+        # might not still be there) plus all the files that are in the working
+        # directory (and might or might not have an earlier state committed)
 
-        for file_state in self.location_state.iterate_file_states(self.id):
+        paths = set(self.location_state.get_all_paths(id_ = self.id)).union(
+            working_directory.get_filenames()
+        )
+
+        for path in paths:
+            file_state = self.location_state.get_latest_file_state(path)
             if working_directory.file_maybe_modified(file_state):
                 new_file_state = working_directory.generate_file_state(file_state.path)
                 self.location_state.update_file_state(self.id, new_file_state)
-            paths.remove(file_state.path)
-
-        # Now scan all remaining files
-        for path in paths:
-            file_state = working_directory.generate_file_state(path)
-            self.location_state.update_file_state(self.id, file_state)
 
         if not self.location_state.was_modified(self.id):
             return False
@@ -273,10 +273,10 @@ class Repository:
             remote_id = serialization.read(files[config_path])['id']
             remote_history = LocationState.load(files[states_path])
 
-        conflicts, new_state = self.merge(remote_id, remote_history)
+        conflicts = self.merge(remote_id, remote_history)
 
         # TODO: make these nicer (without outside access to $state)
-        self.location_state.state.update(new_state)
+        #self.location_state.state.update(new_state)
 
         self.location_state.write()
 
@@ -284,7 +284,23 @@ class Repository:
         return conflicts
 
 
+    def fetch(self, remote_state):
+        # TODO: Just copy over all newer remote states,
+        # state about local repo should never be overwritten by this operation.
+
+
+    def find_conflicts(self):
+        # TODO: Find all conflicts (situations where there is more than one
+        # head for a file)
+        # Note: resolving conflicts is than done by a commit()
+
+
     def merge(self, remote_id, remote_location_state):
+        # TODO: refactor this into fetch() and find_conflicts()
+        # to reduce my own confusion about what this is supposed to do
+
+        remote_locations = remote_location_state.get_locations()
+        local_locations = self.location_state.get_locations()
 
         paths = set(self.location_state.get_all_paths()).union(
             remote_location_state.get_all_paths()
@@ -296,8 +312,8 @@ class Repository:
 
         conflicts = {}
 
-        rec_dd = lambda: defaultdict(rec_dd)
-        new_state = rec_dd()
+        #rec_dd = lambda: defaultdict(rec_dd)
+        #new_state = rec_dd()
 
         # TODO: handle WIPE entries
 
@@ -310,7 +326,7 @@ class Repository:
                 # the state of that file at that location is and one remote.
                 # This is to figure out which entry to use in which case.
 
-                local_entry = self.location_state.get_file_state(remote_id, path)
+                local_entry = self.location_state.get_file_state(self.id, path)
                 remote_entry = remote_location_state.get_file_state(remote_id, path)
 
                 assert not (local_entry is None and remote_entry is None)
@@ -364,7 +380,8 @@ class Repository:
                         # design/design_questions.txt ("How did this merge work?")
                         assert False
 
-                new_state[location]['files'][path] = new_entry
+                self.location_state.update_file_state(self.id, new_entry)
+                #new_state[location]['files'][path] = new_entry
                 entries.add(new_entry)
 
             heads = FileState.get_heads(entries)
@@ -372,11 +389,11 @@ class Repository:
             if len(heads) > 1:
                 conflicts[path] = heads
 
-        for location_id, d in new_state.items():
-            d['location'] = location_id
-            d['modified'] = True
+        #for location_id, d in new_state.items():
+            #d['location'] = location_id
+            #d['modified'] = True
 
-        return conflicts, new_state
+        return conflicts #, new_state
 
         #if isinstance(remote_specs, str):
             #remote_specs = (remote_specs, )

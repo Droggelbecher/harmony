@@ -31,6 +31,22 @@ class WorkingDirectory:
         might not have been changed.
         """
         path = os.path.join(self.path, file_state.path)
+
+        exists_before = file_state.size is not None
+        exists_now = os.path.exists(path)
+
+        if not exists_before and not exists_now:
+            # Nothing changed on the non-existance of this file in this
+            # location.
+            return False
+
+        if exists_before != exists_now:
+            # File either came into or vanished from existance, thats
+            # definitely a change.
+            return True
+
+        assert exists_before and exists_now
+
         mtime = os.path.getmtime(path)
         size = os.path.getsize(path)
 
@@ -44,15 +60,22 @@ class WorkingDirectory:
         hasher = hashers.get_hasher('default')
         full_path = os.path.join(self.path, path)
 
-        mtime = os.path.getmtime(full_path)
-        size = os.path.getsize(full_path)
-        with open(full_path, 'rb') as f:
-            digest = hasher(f.read())
+        exists = os.path.exists(full_path)
 
-        r = FileState()
-        r.path = path
-        r.mtime = mtime
-        r.size = size
-        r.digest = digest
+        if exists:
+            mtime = os.path.getmtime(full_path)
+            size = os.path.getsize(full_path)
+            with open(full_path, 'rb') as f:
+                digest = hasher(f.read())
+
+        else:
+            mtime = size = digest = None
+
+        r = FileState(
+            path = path,
+            mtime = mtime,
+            size = size,
+            digest = digest,
+        )
         return r
 
