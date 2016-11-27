@@ -228,6 +228,22 @@ class Repository:
         # TODO: Detect renames and generate WIPE entries accordingly (see
         # design/design_questions.txt)
 
+        # TODO: When adding a new file that is also present in the repository
+        # in a different location with a different hash, optionally warn/ask,
+        # as the user might not have checked whether this filename is in the
+        # repo before adding.
+        # Give options to
+        # - download the most up-to-date version from the repo for comparison
+        # - rename file before committing
+        # - just accept the added version as most up-to-date
+        # - don't include the added file in the commit
+        # - remove the to-be-added file (physically), as user now understands
+        #   he/she doesn't need that version anymore
+        #
+        # Note: While this is technically similar to merging, it is a slightly
+        # different thing as it doesnt compare two committed states but one
+        # committed and a to-be-committed.
+
         working_directory = self.working_directory
 
         paths = working_directory.get_filenames()
@@ -326,6 +342,18 @@ class Repository:
 
             if len(heads) >= 2:
                 conflicts[path] = heads
+
+        return conflicts
+
+    def automerge(self, conflicts):
+        """
+        Try to reduce the conflicts by making some obvious choices
+        (eg. if 
+
+
+        XXX: See design/design_questions.txt
+        """
+
 
         return conflicts
 

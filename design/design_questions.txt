@@ -384,6 +384,56 @@ Investigation:
 Answer:
 	UUIDs + URLs ("git remote"-style).
 
+-----------------------
+
+Question:
+	 Lets say repo1 and repo2 disagree on the contents of file a.txt.
+	 Now repo3 (which doesnt know a.txt), pulls state from both.
+
+	 repo3 is conflicted for that file although it doesnt have it in
+	 store. (which is fine I guess?)
+
+	 However in order to resolve the conflict, repo3 must physically
+	 get the file. That is because:
+		 - currently repos only ever change their own state
+		 - state supposedly reflects the actual IS state of a
+		   repository.
+		 - conflict resolution means adding new VC value to the local
+		   state.
+
+Possible ways out:
+	(a) manage two historys: One for the decisions on the "should
+		be" hash values, one for what repo actually has what.
+
+		decision-history:
+			file-name => (vector clock, hash value)
+			- can be merged easily by clock value as long as they are
+			  ordered, unordered CVs w different hashes need conflict
+			  resolution
+
+		ownage history:
+			repo id => (clock, { file-name => (hash value, size, mtime) })
+			- can be chosen on update by clock, no merging necessary
+
+	(b) make sure "remote conflicts" don't block anything / force a
+		decision until the user wants the file physically in the repo,
+		that is be "lazy" in asking the user for clarifying
+		consistency. Has the somewhat odd property that getting a file
+		may propmt the user to choose which one he considers the most
+		up-to-date version.
+
+	(c) change some other locations history
+
+	(d) still manage only one data structure, but add a flag that
+		specifies whether the file is present in that repo
+
+	Discussion:
+	(a) seems to be the cleanest solution, as it separates the is-state which
+	is different for each location and never needs merging cleanly from the
+	"SHOULD BE" definitions that are synchronized throughout the repository.
+	As of this writing (d) would be easiest to implement (also (b) of course
+	but ideally we want the user to have the choice when to ensure
+	consistency).
 
 
 
