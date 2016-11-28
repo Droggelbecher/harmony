@@ -11,6 +11,10 @@ import logging
 from testutils import *
 from harmony.repository import Repository
 
+LOCATION_STATE_DIR = 'location_states'
+
+logger = logging.getLogger(__name__)
+
 
 class TestRepository(TestCase):
 
@@ -54,25 +58,58 @@ class TestRepository(TestCase):
             r2 = Repository.clone(tmpdir2, tmpdir1)
             self.assertFileExists(tmpdir2, '.harmony', 'config', msg="config file after clone")
             self.assertDirectoriesEqual(
-                J(tmpdir1, '.harmony', 'history'),
-                J(tmpdir2, '.harmony', 'history')
+                J(tmpdir1, '.harmony', LOCATION_STATE_DIR),
+                J(tmpdir2, '.harmony', LOCATION_STATE_DIR)
                 )
 
     def test_one_location_state_iff_there_have_been_local_commits_only(self):
         with TempDir() as tmpdir1:
             r1 = Repository.init(tmpdir1)
-            location_states = os.listdir(J(tmpdir1, '.harmony', 'history'))
+            location_states = os.listdir(J(tmpdir1, '.harmony',
+                                           LOCATION_STATE_DIR))
             self.assertEqual(0, len(location_states))
 
             echo('hallo', J(tmpdir1, 'hallo.txt'))
             r1.commit()
-            location_states = os.listdir(J(tmpdir1, '.harmony', 'history'))
+            location_states = os.listdir(J(tmpdir1, '.harmony',
+                                           LOCATION_STATE_DIR))
             self.assertEqual(1, len(location_states))
 
             echo('hallo, welt', J(tmpdir1, 'hallo.txt'))
             r1.commit()
-            location_states = os.listdir(J(tmpdir1, '.harmony', 'history'))
+            location_states = os.listdir(J(tmpdir1, '.harmony',
+                                           LOCATION_STATE_DIR))
             self.assertEqual(1, len(location_states))
+
+    def test_pull_state_finds_conflict(self):
+        with TempDir() as tmpdir1, TempDir() as tmpdir2:
+
+            r1 = Repository.init(tmpdir1)
+            echo('hallo', J(tmpdir1, 'hallo.txt'))
+            r1.commit()
+
+            # clock @R1 { r1 = 1 }
+
+            r2 = Repository.clone(tmpdir2, tmpdir1)
+
+            # clock @R2 { r1 = 1, r2 = 0 }
+
+            echo('hallo-r1', J(tmpdir1, 'hallo.txt'))
+            r1.commit()
+
+            # clock @R1 { r1 = 2 }
+
+            # This change (hallo->hallo-r2) is not actually a merge,
+            # but since the file wasnt loaded before in R2, it should have
+            # raised a confirmation to the user.
+            echo('hallo-r2', J(tmpdir2, 'hallo.txt'))
+            r2.commit()
+
+            # clock @R2 { r1 = 1, r2 = 1 }
+
+            conflicts = r2.pull_state(tmpdir1)
+            self.assertEqual(1, len(conflicts))
+
 
     def test_pull_state_finds_conflicts(self):
         with TempDir() as tmpdir1, TempDir() as tmpdir2:
@@ -82,11 +119,17 @@ class TestRepository(TestCase):
 
             r1 = Repository.init(tmpdir1)
 
+            logger.debug('-- Creating stuff in R1')
+
             # -- 1 --
             echo('hallo', J(tmpdir1, 'hallo.txt'))
             r1.commit()
 
+            logger.debug('-- Cloning')
+
             r2 = Repository.clone(tmpdir2, tmpdir1)
+
+            logger.debug('-- Changing stuff in R1')
 
             # -- 1 --
             echo('hello', J(tmpdir1, 'hello.txt'))
@@ -101,16 +144,43 @@ class TestRepository(TestCase):
             echo('Hello, World!', J(tmpdir1, 'hello.txt'))
             r1.commit()
 
+            logger.debug('-- Changing stuff in R2')
+
             # -- 2 --
             echo("Guten Tag, Welt!", J(tmpdir2, 'hallo.txt'))
             echo("Hello, World!!", J(tmpdir2, 'hello.txt'))
             r2.commit()
+
+            logger.debug('-- Pull R1 -> R2')
 
             conflicts = r2.pull_state(tmpdir1)
             self.assertEqual(2, len(conflicts))
 
             #heads = r2.history.get_head_ids()
             #self.assertEqual(2, len(heads))
+
+    # TODO: make syntax for tests nicer, something like
+    # with repo(repository1) as r:
+    #    r.echo('foo', 'foo.txt')
+    #    r.commit()
+
+
+    def test_pull_state_conflicts_on_adding(self):
+        with TempDir() as A, TempDir() as B:
+
+            rA = Repository.init(A)
+            rB = Repository.clone(B, A)
+
+            echo('Added in A', J(A, 'x.txt'))
+            rA.commit()
+
+            echo('Added in B', J(B, 'x.txt'))
+            rB.commit()
+
+            conflicts = rB.pull_state(A)
+            self.assertEqual(1, len(conflicts))
+
+
 
     def test_pull_state_auto_merges(self):
         with TempDir() as tmpdir1, TempDir() as tmpdir2:

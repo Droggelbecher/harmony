@@ -4,6 +4,9 @@ import glob
 
 from harmony import serialization
 
+# TODO: turn read/write magic into from_dict/to_dict magic
+
+
 class HarmonyComponent:
 
     @classmethod
@@ -50,7 +53,7 @@ class DirectoryComponent(HarmonyComponent):
             self.write_item(v, os.path.join(self.path, k))
 
     def write_item(self, data, path):
-        serialization.write(v, path)
+        serialization.write(data, path)
 
 class FileComponent(HarmonyComponent):
 

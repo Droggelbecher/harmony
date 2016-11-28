@@ -9,12 +9,12 @@ from collections import defaultdict
 from harmony import hashers
 from harmony import protocols
 from harmony import serialization
-from harmony.location_state import LocationState
+from harmony.location_states import LocationStates
+from harmony.repository_state import RepositoryState
 from harmony.remotes import Remotes
 from harmony.repository_state_exception import RepositoryStateException
 from harmony.ruleset import Ruleset
 from harmony.working_directory import WorkingDirectory
-from harmony.file_state import FileState
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +47,13 @@ class Repository:
         repo = Repository(working_directory, harmony_directory)
 
         def make_component(class_):
+            logging.debug('make_companent {}'.format(class_.get_path(repo.harmony_directory)))
             return class_.init(
                 class_.get_path(repo.harmony_directory)
             )
 
-        repo.location_state = make_component(LocationState)
+        repo.location_states = make_component(LocationStates)
+        repo.repository_state = make_component(RepositoryState)
         repo.ruleset = make_component(Ruleset)
         repo.remotes = make_component(Remotes)
         repo.working_directory = WorkingDirectory(working_directory, repo.ruleset)
@@ -89,11 +91,13 @@ class Repository:
         repo.name = repo_config['name']
 
         def load_component(class_):
+            logging.debug('load_component {}'.format(class_.get_path(repo.harmony_directory)))
             return class_.load(
                 class_.get_path(repo.harmony_directory)
             )
 
-        repo.location_state = load_component(LocationState)
+        repo.location_states = load_component(LocationStates)
+        repo.repository_state = load_component(RepositoryState)
         repo.ruleset = load_component(Ruleset)
         repo.remotes = load_component(Remotes)
         repo.working_directory = WorkingDirectory(working_directory, repo.ruleset)
@@ -195,7 +199,8 @@ class Repository:
         return self.url
 
     def write(self):
-        self.location_state.write()
+        self.location_states.write()
+        self.repository_state.write()
         self.remotes.write()
         self.ruleset.write()
 
@@ -224,6 +229,8 @@ class Repository:
         """
         DOCTODO
         """
+        logger.debug('COMMIT {}'.format(self.id))
+        logger.debug('working dir {}'.format(self.working_directory.path))
 
         # TODO: Detect renames and generate WIPE entries accordingly (see
         # design/design_questions.txt)
@@ -245,48 +252,65 @@ class Repository:
         # committed and a to-be-committed.
 
         working_directory = self.working_directory
-
         paths = working_directory.get_filenames()
 
-        # Create a commit based on the last known state
-        self.location_state.create_state(self.id)
 
-        # Now go consider all the files that are in our record (and might or
-        # might not still be there) plus all the files that are in the working
-        # directory (and might or might not have an earlier state committed)
+        # 1. update location state
+        #    - TODO detect renames (add WIPE entries later for those)
+        #    - TODO when a file is *added* that is known to other locations w/
+        #      different digest, let user confirm what he wants to do (see
+        #      above)
+        #    - increase local clock
+        #
+        # 2. update repository state
+        #    - if file changed in step 1:
+        #      clock = current clock for local + max for each other location
+        #      hash = current local hash
+        #      (deviate from this if user selected to do something else)
+        #    - if file did not change:
+        #      no change in hash or clock
 
-        paths = set(self.location_state.get_all_paths(id_ = self.id)).union(
-            working_directory.get_filenames()
-        )
-
+        any_change = False
         for path in paths:
-            file_state = self.location_state.get_latest_file_state(path)
+            file_state = self.location_states.get_file_state(self.id, path)
             if working_directory.file_maybe_modified(file_state):
                 new_file_state = working_directory.generate_file_state(file_state.path)
-                logger.debug('{} committing : {}'.format(self.id, new_file_state.path))
-                self.location_state.update_file_state(self.id, new_file_state)
+                changed = self.location_states.update_file_state(self.id, new_file_state)
+                if changed:
+                    any_change = True
+                    self.repository_state.update_file_state(
+                        new_file_state,
+                        self.id,
+                        self.location_states.get_clock(self.id) + 1,
+                    )
+                    logger.debug('{} committed: {} clk={}'.format(self.id, new_file_state.path, self.location_states.get_clock(self.id) + 1))
+                else:
+                    logger.debug('{} not actually changed: {}'.format(self.id, path))
             else:
                 logger.debug('{} not changed: {}'.format(self.id, path))
 
-        if not self.location_state.was_modified(self.id):
-            return False
+        self.location_states.write()
+        self.repository_state.write()
 
-        if not dry_run:
-            self.location_state.write()
-            self.location_state.increment_clock(self.id)
+        logger.debug('/COMMIT {} any_change={}'.format(self.id, any_change))
 
-        return True
-
+        return any_change
 
     def pull_state(self, remote_spec):
         """
         @param remote_specs list() or tuple() of remote specifications or a
         single remote specification (as string)
         """
-        self.fetch(remote_spec)
-        conflicts = self.find_conflicts()
+        remote_repository_state = self.fetch(remote_spec)
+        conflicts, new_repository_state = self.merge(remote_repository_state)
 
         logger.debug('conflicts={}'.format(conflicts))
+        if not len(conflicts):
+            logger.debug('auto-merging')
+            self.repository_state.overwrite(new_repository_state)
+            self.repository_state.write()
+
+
         return conflicts
 
 
@@ -298,52 +322,80 @@ class Repository:
         ))
 
         #config_path = os.path.join(self.HARMONY_SUBDIR, self.REPOSITORY_FILE)
-        states_path = LocationState.get_path(self.HARMONY_SUBDIR)
+        location_states_path = LocationStates.get_path(self.HARMONY_SUBDIR)
+        repository_state_path = RepositoryState.get_path(self.HARMONY_SUBDIR)
+
 
         with protocols.connect(location) as connection:
-            files = connection.pull_harmony_files([states_path])
-            #remote_id = serialization.read(files[config_path])['id']
-            remote_state = LocationState.load(files[states_path])
+            files = connection.pull_harmony_files([
+                location_states_path,
+                repository_state_path
+            ])
+            remote_location_states = LocationStates.load(files[location_states_path])
+            repository_state = RepositoryState.load(files[repository_state_path])
 
         logger.debug('{} fetched remote state:'.format(self.id))
-        for lid, d in remote_state.state.items():
+        for lid, d in remote_location_states.state.items():
             logger.debug('  {}:'.format(lid))
             for f in d['files'].values():
                 logger.debug('    {}'.format(f))
 
-        self.location_state.update(remote_state)
-        self.location_state.write()
+        self.location_states.update(remote_location_states)
+        self.location_states.write()
+
+        return repository_state
 
 
-    def find_conflicts(self):
-        logger.debug('self.id={}'.format(self.id))
+    def merge(self, remote_repository_state):
+        local_paths = set(self.repository_state.get_paths())
+        remote_paths = set(remote_repository_state.get_paths())
+        local_state = self.repository_state
+        remote_state = remote_repository_state
 
-        paths = self.location_state.get_all_paths()
-        locations = self.location_state.get_locations()
-        state = self.location_state
-
+        merged = RepositoryState(None)
         conflicts = {}
 
-        # TODO: handle WIPE entries
+        # TODO: clean up all logger messages (also in other modules)
+
+        logger.debug('ID {}'.format(self.id))
+        logger.debug('paths local={}'.format(self.repository_state.get_paths()))
+        logger.debug('paths remote={}'.format(remote_repository_state.get_paths()))
+
+        for p in local_paths - remote_paths:
+            merged.set_entry( p, local_state.get_entry(p) )
+
+        for p in remote_paths - local_paths:
+            merged.set_entry( p, remote_state.get_entry(p) )
+
+
+        # conflicts can only arise in paths that are specified in both state
+        # files
+        paths = set(self.repository_state.get_paths()) \
+                & set(remote_repository_state.get_paths())
+
 
         for path in paths:
-            file_states = set(
-                state.get_file_state(id_, path)
-                for id_ in locations
-            )
-            assert len(file_states) >= 1
+            local = self.repository_state.get_entry(path)
+            remote = remote_repository_state.get_entry(path)
 
-            logger.debug('path={} states={}'.format(path, file_states))
+            c = local.clock.compare(remote.clock)
+            logger.debug('  path={} l.c={} r.c={} cmp={}'.format(
+                path, local.clock, remote.clock, c
+            ))
 
-            heads = FileState.get_heads(file_states)
-            assert len(heads) >= 1
+            if c is None:
+                conflicts[path] = (local, remote)
 
-            logger.debug('path={}  heads={}'.format(path, heads))
+            elif c < 0:
+                merged.set_entry(path, remote)
 
-            if len(heads) >= 2:
-                conflicts[path] = heads
+            else: # c >= 0:
+                merged.set_entry(path, local)
 
-        return conflicts
+
+        # TODO: also return merged
+        return conflicts, merged
+
 
     def automerge(self, conflicts):
         """
