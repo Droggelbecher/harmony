@@ -43,7 +43,6 @@ class Repository:
 
         os.mkdir(harmony_directory)
 
-
         repo = Repository(working_directory, harmony_directory)
 
         def make_component(class_):
@@ -61,7 +60,7 @@ class Repository:
         repo.id = uuid.uuid1().hex
         repo.name = name
 
-        repo.write()
+        repo.save()
 
         return repo
 
@@ -85,6 +84,8 @@ class Repository:
         working_directory = class_.find_working_directory_here(harmony_directory)
         repo = class_(working_directory, harmony_directory)
 
+        # TODO: implement a Configuration class so we can use
+        # Configuration.load(...) here
         repo_config = serialization.read(os.path.join(harmony_directory, Repository.REPOSITORY_FILE))
 
         repo.id = repo_config['id']
@@ -124,7 +125,7 @@ class Repository:
 
         # Pull
         target_repo.pull_state(location)
-        target_repo.write()
+        target_repo.save()
 
         return target_repo
 
@@ -198,11 +199,11 @@ class Repository:
     def get_url(self):
         return self.url
 
-    def write(self):
-        self.location_states.write()
-        self.repository_state.write()
-        self.remotes.write()
-        self.ruleset.write()
+    def save(self):
+        self.location_states.save()
+        self.repository_state.save()
+        self.remotes.save()
+        self.ruleset.save()
 
         d = {
                 'id': self.id,
@@ -289,8 +290,8 @@ class Repository:
             else:
                 logger.debug('{} not changed: {}'.format(self.id, path))
 
-        self.location_states.write()
-        self.repository_state.write()
+        self.location_states.save()
+        self.repository_state.save()
 
         logger.debug('/COMMIT {} any_change={}'.format(self.id, any_change))
 
@@ -308,8 +309,7 @@ class Repository:
         if not len(conflicts):
             logger.debug('auto-merging')
             self.repository_state.overwrite(new_repository_state)
-            self.repository_state.write()
-
+            self.repository_state.save()
 
         return conflicts
 
@@ -335,13 +335,13 @@ class Repository:
             repository_state = RepositoryState.load(files[repository_state_path])
 
         logger.debug('{} fetched remote state:'.format(self.id))
-        for lid, d in remote_location_states.state.items():
+        for lid, location in remote_location_states.items.items():
             logger.debug('  {}:'.format(lid))
-            for f in d['files'].values():
+            for f in location.files.values():
                 logger.debug('    {}'.format(f))
 
         self.location_states.update(remote_location_states)
-        self.location_states.write()
+        self.location_states.save()
 
         return repository_state
 
@@ -384,7 +384,11 @@ class Repository:
             ))
 
             if c is None:
-                conflicts[path] = (local, remote)
+                if local.contents_different(remote):
+                    conflicts[path] = (local, remote)
+                else:
+                    # TODO: Create a new, merged clock value!
+                    merged.set_entry(path, local)
 
             elif c < 0:
                 merged.set_entry(path, remote)

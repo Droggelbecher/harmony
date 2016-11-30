@@ -36,14 +36,13 @@ class Ruleset(FileComponent):
                 commit = False,
                 action = 'stop'
                 )
-
-        r.write()
+        r.save()
         return r
 
     @classmethod
     def load(class_, path):
         r = super(Ruleset, class_).load(path)
-        assert len(r.state['rules']) > 0
+        assert len(r.rules) > 0
         return r
 
     @staticmethod
@@ -121,18 +120,19 @@ class Ruleset(FileComponent):
                 return True
         return False
 
-    def __init__(self, path):
+    def __init__(self, path, rules = None):
         super().__init__(path)
-        self.state = {
-            'rules': []
-        }
-        #self.rules = []
-        #self.rules_file = os.path.join(self.harmony_directory, Ruleset.RULES_FILE)
+        self.rules = rules if rules else []
         self.matchers = {
                 'path': Ruleset.match_path,
                 'dirname': Ruleset.match_directory,
                 'filename': Ruleset.match_filename,
                 }
+
+    def to_dict(self):
+        return {
+            'rules': self.rules,
+        }
 
 
     def iterate_committable_files(self, working_directory):
@@ -158,7 +158,7 @@ class Ruleset(FileComponent):
         result = {
                 'commit': True
                 }
-        for rule in self.state['rules']:
+        for rule in self.rules:
             matches = True
             for matcher, parameters in rule['match'].items():
                 if not self.matchers[matcher](relfn, parameters):
@@ -174,6 +174,6 @@ class Ruleset(FileComponent):
 
 
     def add_rule(self, **kws):
-        self.state['rules'].append(kws)
+        self.rules.append(kws)
 
 

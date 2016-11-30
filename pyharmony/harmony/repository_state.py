@@ -29,6 +29,9 @@ class Entry:
             'clock': self.clock.to_dict(),
         }
 
+    def contents_different(self, other):
+        return self.digest != other.digest
+
     def __repr__(self):
         return 'Entry(path={!r}, digest={!r}, clock={!r})'.format(
             self.path, self.digest, self.clock
@@ -38,39 +41,43 @@ class RepositoryState(FileComponent):
 
     RELATIVE_PATH = 'repository_state'
 
-    def __init__(self, path):
+    def __init__(self, path, files = None):
         super().__init__(path)
-        self.state = {}
+        self.files = files if files else {}
 
-    def read(self, path):
-        self.state = {
-            f: Entry.from_dict(v)
-            for f, v in serialization.read(path).items()
+    @classmethod
+    def from_dict(class_, d):
+        return class_(
+            d['path'],
+            files = {
+                f: Entry.from_dict(v)
+                for f, v in d['files'].items()
+            }
+        )
+
+    def to_dict(self):
+        return {
+            'files': {
+                f: v.to_dict()
+                for f, v in self.files.items()
+            }
         }
-        logger.debug('Read repo state {} <- {}'.format(self.state, path))
-
-    def write(self):
-        logger.debug('----- Writing repo state {} -> {}'.format(self.state, self.path))
-        serialization.write({
-            f: v.to_dict()
-            for f, v in self.state.items()
-        }, self.path)
 
     def get_paths(self):
-        return self.state.keys()
+        return self.files.keys()
 
     # TODO: turn get_entry/set_entry into item access
 
     def get_entry(self, path):
-        return deepcopy(self.state.get(path, Entry(path = path)))
+        return deepcopy(self.files.get(path, Entry(path = path)))
 
     def set_entry(self, path, entry):
         logger.debug('---- set_entry {} {}'.format(path, entry))
-        self.state[path] = entry
+        self.files[path] = entry
 
     def overwrite(self, other):
-        logger.debug('---- overwriting repo state with {}'.format(other.state))
-        self.state = deepcopy(other.state)
+        logger.debug('---- overwriting repo state with {}'.format(other.files))
+        self.files = deepcopy(other.files)
 
     def update_file_state(self, new_state, id_, clock_value):
         logger.debug('---- update file state {} {} {}'.format(new_state.path,

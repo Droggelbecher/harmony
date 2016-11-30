@@ -1,8 +1,11 @@
 
 import os
 import glob
+import logging
 
 from harmony import serialization
+
+logger = logging.getLogger(__name__)
 
 # TODO: turn read/write magic into from_dict/to_dict magic
 
@@ -16,19 +19,26 @@ class HarmonyComponent:
     @classmethod
     def init(class_, path):
         r = class_(path)
-        r.write()
+        r.save()
         return r
 
     @classmethod
-    def load(class_, path):
-        r = class_(path)
-        r.read(path)
+    def from_dict(class_, d):
+        r = class_(**d)
+        r._serialization_keys = sorted(list(set(d.keys()) - set(['path'])))
         return r
 
     def __init__(self, path):
         self.path = path
+
+        # TODO: remove this
         self.state = {}
 
+    #def to_dict(self):
+        #return {
+            #k: getattr(self, k)
+            #for k in self._serialization_keys
+        #}
 
 
 class DirectoryComponent(HarmonyComponent):
@@ -39,27 +49,51 @@ class DirectoryComponent(HarmonyComponent):
         r = super(DirectoryComponent, class_).init(path)
         return r
 
-    def read(self, path):
-        self.state = {}
+    @classmethod
+    def item_from_dict(class_, d):
+        return d
+
+    @classmethod
+    def load(class_, path):
+        items = {
+
+            filename: class_.item_from_dict(serialization.read(os.path.join(path, filename)))
+            for filename in os.listdir(path)
+        }
+        return class_.from_dict({
+            'path': path,
+            'items': items
+        })
+
+    def __init__(self, path, items):
         self.path = path
-        for filename in os.listdir(path):
-            self.state[filename] = self.read_item(os.path.join(path, filename))
+        self.items = items
 
-    def read_item(self, path):
-        return serialization.read(path)
+    def item_to_dict(self, item):
+        return item
 
-    def write(self):
-        for k, v in self.state.items():
-            self.write_item(v, os.path.join(self.path, k))
+    def to_dict(self):
+        return {
+            'path': self.path,
+            'items': { k: self.item_to_dict(v) for k, v in self.items.items() },
+        }
 
-    def write_item(self, data, path):
-        serialization.write(data, path)
+    def save(self):
+        d = self.to_dict()
+        for filename, v in d['items'].items():
+            serialization.write(v, os.path.join(self.path, filename))
+
 
 class FileComponent(HarmonyComponent):
 
-    def read(self, path):
-        self.state = serialization.read(path)
-        self.path = path
+    @classmethod
+    def load(class_, path):
+        d = serialization.read(path)
+        d['path'] = path
+        return class_.from_dict(d)
 
-    def write(self):
-        serialization.write(self.state, self.path)
+
+    def save(self):
+        d = self.to_dict()
+        serialization.write(self.to_dict(), self.path)
+
