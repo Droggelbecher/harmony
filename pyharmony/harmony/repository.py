@@ -396,49 +396,14 @@ class Repository:
             else: # c >= 0:
                 merged.set_entry(path, local)
 
-
-        # TODO: also return merged
         return conflicts, merged
 
 
-    def automerge(self, conflicts):
-        """
-        Try to reduce the conflicts by making some obvious choices
-        (eg. if 
+    def pull_file(self, path, remote_spec):
 
+        location = self.remotes.get_location_any(remote_spec)
+        with protocols.connect(location) as connection:
+            connection.pull_working_files([path], self.working_directory.path)
 
-        XXX: See design/design_questions.txt
-        """
-
-
-        return conflicts
-
-
-    def pull_file(self, path):
-        head = self.history.get_local_head()
-        assert head is not None
-
-        # TODO: transform path to be sure its relative to working directory
-
-        digest = head.get_file(path)
-        assert digest is not None
-
-        candidate_repositories = (
-                r for r in head.repositories.values()
-                if r['files'].get(path, None) == digest
-        )
-
-        for repository in candidate_repositories:
-            location = self.remotes.get_location(id_ = repository['id'], name
-                    = repository['name'])
-            assert location is not None
-            connection = protocols.connect(location)
-            assert connection is not None
-            connection.pull_working_file((path,), self.working_directory.path)
-
-
-        
-
-
-
+        self.commit()
 

@@ -34,7 +34,7 @@ class Connection:
         return paths
 
     def pull_working_files(self, paths, working_directory):
-        paths, cleanup = self.protocol.pull_file(self.location, paths, working_directory)
+        paths, cleanup = self.protocol.pull_working_files(self.location, paths, working_directory)
         self.cleanup_callbacks.append(cleanup)
         return paths
 
@@ -70,6 +70,7 @@ class FileProtocol(Protocol):
     def pull_working_files(self, location, paths, working_directory):
         for path in paths:
             shutil.copyfile(os.path.join(location, path), os.path.join(working_directory, path))
+        return {p: os.path.join(working_directory, p) for p in paths}, lambda: None
         
 
 

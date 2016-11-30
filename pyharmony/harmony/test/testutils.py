@@ -26,7 +26,26 @@ def echo(s, *args):
     with open(filename, 'w') as f:
         f.write(s)
 
+def mv(a, b):
+    os.rename(a, b)
+
 class TestCase(unittest.TestCase):
+
+    def assertFilesEqual(self, a, b):
+        self.assertFileExists(a)
+        self.assertFileExists(b)
+        with open(a, 'r') as f:
+            sa = f.read()
+        with open(b, 'r') as f:
+            sb = f.read()
+        self.assertEqual(sa, sb)
+
+    def assertFileNotExists(self, *args, **kws):
+        msg = kws.get('msg', '')
+        filename = os.path.join(*args)
+        if os.path.exists(filename):
+            self.fail('{} does exists although it should not. {}'.format(filename, msg))
+
     def assertFileExists(self, *args, **kws):
         msg = kws.get('msg', '')
         filename = os.path.join(*args)

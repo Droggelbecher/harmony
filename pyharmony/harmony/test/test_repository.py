@@ -156,14 +156,6 @@ class TestRepository(TestCase):
             conflicts = r2.pull_state(tmpdir1)
             self.assertEqual(2, len(conflicts))
 
-            #heads = r2.history.get_head_ids()
-            #self.assertEqual(2, len(heads))
-
-    # TODO: make syntax for tests nicer, something like
-    # with repo(repository1) as r:
-    #    r.echo('foo', 'foo.txt')
-    #    r.commit()
-
 
     def test_pull_state_conflicts_on_adding(self):
         with TempDir() as A, TempDir() as B:
@@ -182,7 +174,7 @@ class TestRepository(TestCase):
 
 
 
-    def test_pull_state_auto_merges(self):
+    def test_pull_state_auto_merges_equal_content(self):
         with TempDir() as tmpdir1, TempDir() as tmpdir2:
 
             # Create R1 with a number of commits
@@ -217,10 +209,50 @@ class TestRepository(TestCase):
             conflicts = r2.pull_state(tmpdir1)
             self.assertEqual(0, len(conflicts))
 
-            #r2.history.format_log()
 
-            #heads = r2.history.get_head_ids()
-            #self.assertEqual(1, len(heads))
+    def test_pull_file_simple(self):
+
+        with TempDir() as A, TempDir() as B:
+
+            rA = Repository.init(A)
+            rB = Repository.clone(B, A)
+
+            echo('Hello, World', J(A, 'x.txt'))
+            rA.commit()
+
+            conflicts = rB.pull_state(A)
+            self.assertEqual(0, len(conflicts))
+
+            rB.pull_file('x.txt', A)
+            self.assertFilesEqual(J(A, 'x.txt'), J(B, 'x.txt'))
+
+
+
+    def test_pull_state_autodetects_rename(self):
+
+        with TempDir() as A, TempDir() as B:
+
+            rA = Repository.init(A)
+            rB = Repository.clone(B, A)
+
+            echo('Hello, World', J(A, 'x.txt'))
+            rA.commit()
+
+            conflicts = rB.pull_state(A)
+            self.assertEqual(0, len(conflicts))
+            rB.pull_file('x.txt', A)
+            self.assertFilesEqual(J(A, 'x.txt'), J(B, 'x.txt'))
+
+            mv(J(A, 'x.txt'), J(A, 'y.txt'))
+            rA.commit()
+
+            conflicts = rB.pull_state(A)
+            self.assertEqual(0, len(conflicts))
+            self.assertFileNotExists(J(A, 'x.txt'))
+            self.assertFileNotExists(J(B, 'x.txt'))
+            self.assertFilesEqual(J(A, 'y.txt'), J(B, 'y.txt'))
+
+
 
     # TODO:
     # - file deletion
