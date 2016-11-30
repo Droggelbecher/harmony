@@ -1,3 +1,8 @@
+#!/usr/bin/env python
+
+import sys
+sys.path.append('../..')
+import logging
 
 import unittest
 from harmony.ruleset import Ruleset
@@ -33,3 +38,6 @@ class TestRuleset(unittest.TestCase):
         self.assertTrue(f('foo/bar/baz/bang.txt', 'b*'))
         self.assertFalse(f('foo/bar/baz/bang.txt', '*x*'))
 
+if __name__ == '__main__':
+    logging.basicConfig(level = logging.DEBUG, format = '{levelname:7s} {module:15s}:{funcName:15s} | {message:s}', style = '{')
+    unittest.main()

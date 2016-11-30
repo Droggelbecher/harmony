@@ -26,16 +26,6 @@ class Clock:
     def to_dict(self):
         return self.values
 
-    def advance1(self, other):
-        if len(other.values) != 1:
-            raise ValueError('Expected a 1-dimensional clock')
-
-        k = tuple(other.values.keys())[0]
-        if self.values.get(k, 0) >= other.values[k]:
-            raise ValueError('Tried to advance clock backwards')
-
-        self.values.update(other.values)
-
     def compare(self, other):
         keys = set(self.values.keys()).union(other.values.keys())
 

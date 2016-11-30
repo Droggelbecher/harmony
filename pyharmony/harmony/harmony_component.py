@@ -7,9 +7,6 @@ from harmony import serialization
 
 logger = logging.getLogger(__name__)
 
-# TODO: turn read/write magic into from_dict/to_dict magic
-
-
 class HarmonyComponent:
 
     @classmethod
@@ -30,16 +27,6 @@ class HarmonyComponent:
 
     def __init__(self, path):
         self.path = path
-
-        # TODO: remove this
-        self.state = {}
-
-    #def to_dict(self):
-        #return {
-            #k: getattr(self, k)
-            #for k in self._serialization_keys
-        #}
-
 
 class DirectoryComponent(HarmonyComponent):
 
