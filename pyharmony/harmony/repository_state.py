@@ -9,10 +9,11 @@ from harmony import serialization
 logger = logging.getLogger(__name__)
 
 class Entry:
-    def __init__(self, path = None, digest = None, clock = Clock()):
+    def __init__(self, path = None, digest = None, clock = Clock(), wipe = False):
         self.digest = digest
         self.path = path
         self.clock = clock
+        self.wipe = wipe
 
     @classmethod
     def from_dict(class_, d):
@@ -20,6 +21,7 @@ class Entry:
         e.digest = d['digest']
         e.path = d['path']
         e.clock = Clock.from_dict(d['clock'])
+        e.wipe = d['wipe']
         return e
 
     def to_dict(self):
@@ -27,15 +29,16 @@ class Entry:
             'digest': self.digest,
             'path': self.path,
             'clock': self.clock.to_dict(),
+            'wipe': self.wipe,
         }
 
     def contents_different(self, other):
         return self.digest != other.digest
 
-    def __repr__(self):
-        return 'Entry(path={!r}, digest={!r}, clock={!r})'.format(
-            self.path, self.digest, self.clock
-        )
+    #def __str__(self):
+        #return 'Entry(path={!r}, digest={!r}, clock={!r}, wipe={!r})'.format(
+            #self.path, self.digest, self.clock, self.wipe
+        #)
 
 class RepositoryState(FileComponent):
 
@@ -72,7 +75,7 @@ class RepositoryState(FileComponent):
         return deepcopy(self.files.get(path, Entry(path = path)))
 
     def set_entry(self, path, entry):
-        logger.debug('---- set_entry {} {}'.format(path, entry))
+        logger.debug('repo state [{}] = {}'.format(path, entry.__dict__))
         self.files[path] = entry
 
     def overwrite(self, other):
@@ -80,16 +83,18 @@ class RepositoryState(FileComponent):
         self.files = deepcopy(other.files)
 
     def update_file_state(self, new_state, id_, clock_value):
-        logger.debug('---- update file state {} {} {}'.format(new_state.path,
+        logger.debug('Updating file state path={} id={} clk={}'.format(new_state.path,
                                                               id_, clock_value))
         #logger.debug('[{}] = {}
         path = new_state.path
         entry = self.get_entry(path)
 
-        if new_state.digest == entry.digest:
+        if new_state.digest == entry.digest and new_state.wipe == entry.wipe:
             # Nothing changed, really, no need to update anything.
+            logger.debug(' (nothing changed for this file)')
             return
 
+        entry.wipe = new_state.wipe
         entry.digest = new_state.digest
         entry.clock.values[id_] = clock_value
         self.set_entry(path, entry)

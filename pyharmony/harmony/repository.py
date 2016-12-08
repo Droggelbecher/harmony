@@ -230,7 +230,7 @@ class Repository:
         """
         DOCTODO
         """
-        logger.debug('COMMIT {}'.format(self.id))
+        logger.debug('<commit> {}'.format(self.id))
         logger.debug('working dir {}'.format(self.working_directory.path))
 
         # TODO: Detect renames and generate WIPE entries accordingly (see
@@ -253,7 +253,8 @@ class Repository:
         # committed and a to-be-committed.
 
         working_directory = self.working_directory
-        paths = working_directory.get_filenames()
+        paths = set(working_directory.get_filenames()) \
+                | set(self.location_states.get_all_paths(self.id))
 
 
         # 1. update location state
@@ -271,14 +272,57 @@ class Repository:
         #    - if file did not change:
         #      no change in hash or clock
 
+
+        # Do all the file scanning before so we can be sure to do it at most
+        # once per file in the WD
+        wd_states = {
+            path: working_directory.generate_file_state(path)
+            for path in paths
+            if working_directory.file_maybe_modified(
+                self.location_states.get_file_state(self.id, path)
+            )
+        }
+
+        location_states = {
+            path: self.location_states.get_file_state(self.id, path)
+            for path in paths
+        }
+
+
         any_change = False
         for path in paths:
-            file_state = self.location_states.get_file_state(self.id, path)
-            if working_directory.file_maybe_modified(file_state):
-                new_file_state = working_directory.generate_file_state(file_state.path)
+
+            if path in wd_states:
+                file_state = location_states[path]
+                new_file_state = wd_states[path]
                 changed = self.location_states.update_file_state(self.id, new_file_state)
                 if changed:
                     any_change = True
+
+                    # If the file vanished but a new one with the same digest
+                    # popped up, consider that a rename.
+                    # Rename means, the new file is WIPEd (instead of just
+                    # locally removed) and the new file is added as usual
+                    if not new_file_state.exists():
+                        logger.debug('{} vanished'.format(new_file_state.path))
+                        for path2 in paths:
+                            if path2 == path: continue
+                            path2_state = location_states[path2]
+                            new_path2_state = wd_states[path2]
+                            logger.debug('{} rename candidate {} ex before={} ex now={} self.digest={} candidate.digest={}'.format(
+                                path, path2, path2_state.exists(),
+                                new_path2_state.exists(),
+                                file_state.digest, new_path2_state.digest
+                            ))
+
+                            if not path2_state.exists() \
+                               and new_path2_state.exists() \
+                               and new_path2_state.digest == file_state.digest:
+                                logger.info('Detected rename: {} -> {}'.format(path, path2))
+                                new_file_state.wipe = True
+                                new_file_state.digest = file_state.digest
+                                break
+
                     self.repository_state.update_file_state(
                         new_file_state,
                         self.id,
@@ -298,20 +342,57 @@ class Repository:
         return any_change
 
     def pull_state(self, remote_spec):
-        """
-        @param remote_specs list() or tuple() of remote specifications or a
-        single remote specification (as string)
-        """
         remote_repository_state = self.fetch(remote_spec)
         conflicts, new_repository_state = self.merge(remote_repository_state)
 
         logger.debug('conflicts={}'.format(conflicts))
         if not len(conflicts):
             logger.debug('auto-merging')
+
             self.repository_state.overwrite(new_repository_state)
             self.repository_state.save()
 
+            self.auto_rename()
+
         return conflicts
+
+    def auto_rename(self):
+        # precondition: WD clean
+
+        # TODO: Automatically apply auto-renaming
+        # Auto-renaming
+        # -------------
+        # 1. Find any files $A with a WIPE entry.
+        # 2. Compute/get their digest (from location state)
+        # 3. Find a non-wiped file $B in repo that does not exist in the WD
+        # 4. Rename $A to $B
+
+        for path, entry in self.repository_state.files.items():
+            logger.debug('considering {} for auto-rename wipe={} digest={}'.format(path, entry.wipe, entry.digest))
+            if entry.wipe:
+
+                for e in self.repository_state.files.values():
+                    logger.debug('  rename target candidate: {} digest={} wipe={}'.format(
+                        e.path, e.digest, e.wipe
+                    ))
+
+                possible_targets = {
+                    e.path for e in self.repository_state.files.values()
+                    if e.path != path and e.digest == entry.digest and not e.wipe
+                }
+                logger.info(
+                    '{} could be auto-renamed to any of {}'.format(
+                        path, possible_targets
+                    )
+                )
+                if possible_targets:
+                    os.rename(
+                        os.path.join(self.working_directory.path, path),
+                        os.path.join(self.working_directory.path, possible_targets.pop())
+                    )
+
+        # TODO: Update location state to reflect whats happened here
+
 
 
     def fetch(self, remote_spec):
@@ -321,10 +402,8 @@ class Repository:
             self.id, remote_spec, location
         ))
 
-        #config_path = os.path.join(self.HARMONY_SUBDIR, self.REPOSITORY_FILE)
         location_states_path = LocationStates.get_path(self.HARMONY_SUBDIR)
         repository_state_path = RepositoryState.get_path(self.HARMONY_SUBDIR)
-
 
         with protocols.connect(location) as connection:
             files = connection.pull_harmony_files([

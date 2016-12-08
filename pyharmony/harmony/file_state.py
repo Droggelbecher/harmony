@@ -20,11 +20,13 @@ class FileState:
     # TODO: automatically normalize path. Either on string level or
     # ask WorkingDirectory to do it when creating these
 
-    def __init__(self, path = None, digest = None, size = None, mtime = None):
+    def __init__(self, path = None, digest = None, size = None, mtime = None,
+                 wipe = False):
         self.path = path
         self.digest = digest
         self.size = size
         self.mtime = mtime
+        self.wipe = wipe
 
     def __deepcopy__(self, memo):
         return FileState(
@@ -32,12 +34,13 @@ class FileState:
             self.digest,
             self.size,
             self.mtime,
+            self.wipe,
         )
 
-    def __repr__(self):
-        return 'FileState({}, digest={}, size={})'.format(
-            self.path, self.digest, self.size
-        )
+    #def __repr__(self):
+        #return 'FileState({}, digest={}, size={})'.format(
+            #self.path, self.digest, self.size
+        #)
 
     @classmethod
     def from_dict(class_, d):
@@ -49,7 +52,11 @@ class FileState:
             'digest': self.digest,
             'size': self.size,
             'mtime': self.mtime,
+            'wipe': self.wipe,
         }
+
+    def exists(self):
+        return self.size is not None
 
     def contents_different(self, other):
         return self.size != other.size or self.digest != other.digest
