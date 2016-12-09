@@ -6,7 +6,7 @@ import logging
 from harmony import serialization
 from harmony.file_state import FileState
 from harmony.harmony_component import DirectoryComponent
-from harmony.util import datetime_to_iso, iso_to_datetime
+from harmony.util import datetime_to_iso, iso_to_datetime, short_id
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ class LocationStates(DirectoryComponent):
             assert isinstance(d, LocationState)
 
             if id_ not in self.items or self.items[id_].clock < d.clock:
-                logger.debug('overwriting state for {} with remote'.format(id_))
+                logger.debug('overwriting state for {} with remote'.format(short_id(id_)))
                 self.items[id_] = deepcopy(d)
             else:
                 logger.debug('keeping state for {}'.format(id_))

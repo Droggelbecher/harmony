@@ -35,10 +35,8 @@ class Clock:
             if sign == 0:
                 sign = new_sign
             elif new_sign == -sign:
-                logger.debug('uncomparable: {} {} k={}'.format(self, other, k))
                 return None
 
-        logger.debug('-> {}'.format(sign))
         return sign
 
     def __lt__(self, other):

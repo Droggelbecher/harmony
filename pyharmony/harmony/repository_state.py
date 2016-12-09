@@ -35,11 +35,6 @@ class Entry:
     def contents_different(self, other):
         return self.digest != other.digest
 
-    #def __str__(self):
-        #return 'Entry(path={!r}, digest={!r}, clock={!r}, wipe={!r})'.format(
-            #self.path, self.digest, self.clock, self.wipe
-        #)
-
 class RepositoryState(FileComponent):
 
     RELATIVE_PATH = 'repository_state'
@@ -75,23 +70,17 @@ class RepositoryState(FileComponent):
         return deepcopy(self.files.get(path, Entry(path = path)))
 
     def set_entry(self, path, entry):
-        logger.debug('repo state [{}] = {}'.format(path, entry.__dict__))
         self.files[path] = entry
 
     def overwrite(self, other):
-        logger.debug('---- overwriting repo state with {}'.format(other.files))
         self.files = deepcopy(other.files)
 
     def update_file_state(self, new_state, id_, clock_value):
-        logger.debug('Updating file state path={} id={} clk={}'.format(new_state.path,
-                                                              id_, clock_value))
-        #logger.debug('[{}] = {}
         path = new_state.path
         entry = self.get_entry(path)
 
         if new_state.digest == entry.digest and new_state.wipe == entry.wipe:
             # Nothing changed, really, no need to update anything.
-            logger.debug(' (nothing changed for this file)')
             return
 
         entry.wipe = new_state.wipe

@@ -16,6 +16,10 @@ class WorkingDirectory:
             r.add(file_info.relative_filename)
         return r
 
+    def __contains__(self, path):
+        return os.path.exists(
+            os.path.join(self.path, path)
+        )
 
     def file_maybe_modified(self, file_state):
         """

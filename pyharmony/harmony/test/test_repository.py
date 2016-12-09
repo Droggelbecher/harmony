@@ -252,14 +252,36 @@ class TestRepository(TestCase):
             self.assertFileNotExists(J(B, 'x.txt'))
             self.assertFilesEqual(J(A, 'y.txt'), J(B, 'y.txt'))
 
+    def test_rename_does_nothing_for_unpulled(self):
+
+        with TempDir() as A, TempDir() as B:
+
+            rA = Repository.init(A)
+            rB = Repository.clone(B, A)
+
+            echo('Hello, World', J(A, 'x.txt'))
+            rA.commit()
+
+            conflicts = rB.pull_state(A)
+            self.assertEqual(0, len(conflicts))
+
+            self.assertFileNotExists(J(B, 'x.txt'))
+
+            mv(J(A, 'x.txt'), J(A, 'y.txt'))
+            rA.commit()
+
+            conflicts = rB.pull_state(A)
+            self.assertEqual(0, len(conflicts))
+            self.assertFileNotExists(J(A, 'x.txt'))
+            self.assertFileExists(J(A, 'y.txt'))
+            self.assertFileNotExists(J(B, 'x.txt'))
+            self.assertFileNotExists(J(B, 'y.txt'))
 
 
     # TODO:
     # - file deletion
-    # - file moving/renaming
     # - multiple files with same contents
     # - that also in the presence of moving/deletion
-    # - actual file transfer
 
 
     #def test_pull_file_gets_file(self):

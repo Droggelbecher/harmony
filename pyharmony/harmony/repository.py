@@ -15,6 +15,7 @@ from harmony.remotes import Remotes
 from harmony.repository_state_exception import RepositoryStateException
 from harmony.ruleset import Ruleset
 from harmony.working_directory import WorkingDirectory
+from harmony.util import short_id
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,6 @@ class Repository:
         repo = Repository(working_directory, harmony_directory)
 
         def make_component(class_):
-            logging.debug('make_companent {}'.format(class_.get_path(repo.harmony_directory)))
             return class_.init(
                 class_.get_path(repo.harmony_directory)
             )
@@ -92,7 +92,6 @@ class Repository:
         repo.name = repo_config['name']
 
         def load_component(class_):
-            logging.debug('load_component {}'.format(class_.get_path(repo.harmony_directory)))
             return class_.load(
                 class_.get_path(repo.harmony_directory)
             )
@@ -189,9 +188,15 @@ class Repository:
             harmony_directory = Repository.find_harmony_directory(working_directory)
         self.harmony_directory = harmony_directory
 
-
-    def get_id(self):
-        return self.id
+    @property
+    def short_id(self):
+        """
+        Provide a shortened version of the ID for easier reconizability
+        in log messages.
+        Much more likely to collide for many repos, but incredibly useful for
+        quickly understanding logs of unittests.
+        """
+        return short_id(self.id)
 
     def get_name(self):
         return self.name
@@ -230,11 +235,7 @@ class Repository:
         """
         DOCTODO
         """
-        logger.debug('<commit> {}'.format(self.id))
-        logger.debug('working dir {}'.format(self.working_directory.path))
-
-        # TODO: Detect renames and generate WIPE entries accordingly (see
-        # design/design_questions.txt)
+        logger.debug('<commit> ID={} WD={}'.format(self.short_id, self.working_directory.path))
 
         # TODO: When adding a new file that is also present in the repository
         # in a different location with a different hash, optionally warn/ask,
@@ -258,8 +259,8 @@ class Repository:
 
 
         # 1. update location state
-        #    - TODO detect renames (add WIPE entries later for those)
-        #    - TODO when a file is *added* that is known to other locations w/
+        #    - detect renames (add WIPE entries later for those)
+        #    - when a file is *added* that is known to other locations w/
         #      different digest, let user confirm what he wants to do (see
         #      above)
         #    - increase local clock
@@ -328,30 +329,28 @@ class Repository:
                         self.id,
                         self.location_states.get_clock(self.id) + 1,
                     )
-                    logger.debug('{} committed: {} clk={}'.format(self.id, new_file_state.path, self.location_states.get_clock(self.id) + 1))
+                    logger.debug('{} committed: {} clk={}'.format(self.short_id, new_file_state.path, self.location_states.get_clock(self.id) + 1))
                 else:
-                    logger.debug('{} not actually changed: {}'.format(self.id, path))
+                    logger.debug('{} not actually changed: {}'.format(self.short_id, path))
             else:
-                logger.debug('{} not changed: {}'.format(self.id, path))
+                logger.debug('{} not changed: {}'.format(self.short_id, path))
 
         self.location_states.save()
         self.repository_state.save()
 
-        logger.debug('/COMMIT {} any_change={}'.format(self.id, any_change))
-
+        logger.debug('</commit> ID={} any_change={}'.format(self.short_id, any_change))
         return any_change
 
     def pull_state(self, remote_spec):
+        logger.debug('{} pull from {}'.format(self.short_id, remote_spec))
         remote_repository_state = self.fetch(remote_spec)
         conflicts, new_repository_state = self.merge(remote_repository_state)
 
-        logger.debug('conflicts={}'.format(conflicts))
+        logger.debug('conflicts={}'.format(list(conflicts.keys())))
         if not len(conflicts):
             logger.debug('auto-merging')
-
             self.repository_state.overwrite(new_repository_state)
             self.repository_state.save()
-
             self.auto_rename()
 
         return conflicts
@@ -359,7 +358,7 @@ class Repository:
     def auto_rename(self):
         # precondition: WD clean
 
-        # TODO: Automatically apply auto-renaming
+        # Automatically apply auto-renaming
         # Auto-renaming
         # -------------
         # 1. Find any files $A with a WIPE entry.
@@ -368,14 +367,7 @@ class Repository:
         # 4. Rename $A to $B
 
         for path, entry in self.repository_state.files.items():
-            logger.debug('considering {} for auto-rename wipe={} digest={}'.format(path, entry.wipe, entry.digest))
-            if entry.wipe:
-
-                for e in self.repository_state.files.values():
-                    logger.debug('  rename target candidate: {} digest={} wipe={}'.format(
-                        e.path, e.digest, e.wipe
-                    ))
-
+            if entry.wipe and (entry.path in self.working_directory):
                 possible_targets = {
                     e.path for e in self.repository_state.files.values()
                     if e.path != path and e.digest == entry.digest and not e.wipe
@@ -391,7 +383,8 @@ class Repository:
                         os.path.join(self.working_directory.path, possible_targets.pop())
                     )
 
-        # TODO: Update location state to reflect whats happened here
+        # TODO: Update location state to reflect whats happened here and test
+        # that
 
 
 
@@ -399,7 +392,7 @@ class Repository:
         location = self.remotes.get_location_any(remote_spec)
 
         logger.debug('{} fetching from {} which is at {}'.format(
-            self.id, remote_spec, location
+            self.short_id, remote_spec, location
         ))
 
         location_states_path = LocationStates.get_path(self.HARMONY_SUBDIR)
@@ -413,11 +406,11 @@ class Repository:
             remote_location_states = LocationStates.load(files[location_states_path])
             repository_state = RepositoryState.load(files[repository_state_path])
 
-        logger.debug('{} fetched remote state:'.format(self.id))
+        logger.debug('{} fetched remote state:'.format(self.short_id))
         for lid, location in remote_location_states.items.items():
-            logger.debug('  {}:'.format(lid))
+            logger.debug('  {}:'.format(short_id(lid)))
             for f in location.files.values():
-                logger.debug('    {}'.format(f))
+                logger.debug('    {}'.format(f.__dict__))
 
         self.location_states.update(remote_location_states)
         self.location_states.save()
@@ -433,12 +426,6 @@ class Repository:
 
         merged = RepositoryState(None)
         conflicts = {}
-
-        # TODO: clean up all logger messages (also in other modules)
-
-        logger.debug('ID {}'.format(self.id))
-        logger.debug('paths local={}'.format(self.repository_state.get_paths()))
-        logger.debug('paths remote={}'.format(remote_repository_state.get_paths()))
 
         for p in local_paths - remote_paths:
             merged.set_entry( p, local_state.get_entry(p) )
@@ -458,21 +445,23 @@ class Repository:
             remote = remote_repository_state.get_entry(path)
 
             c = local.clock.compare(remote.clock)
-            logger.debug('  path={} l.c={} r.c={} cmp={}'.format(
-                path, local.clock, remote.clock, c
-            ))
-
             if c is None:
                 if local.contents_different(remote):
+                    logger.debug('merge: {} in conflict: {} <-> {}'.format(
+                        path, local.clock, remote.clock
+                    ))
                     conflicts[path] = (local, remote)
                 else:
+                    logger.debug('merge: {} automerged (same content)'.format(path))
                     # TODO: Create a new, merged clock value!
                     merged.set_entry(path, local)
 
             elif c < 0:
+                logger.debug('merge: {} newer on remote'.format(path))
                 merged.set_entry(path, remote)
 
             else: # c >= 0:
+                logger.debug('merge: {} same version or newer on local'.format(path))
                 merged.set_entry(path, local)
 
         return conflicts, merged

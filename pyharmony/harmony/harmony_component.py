@@ -82,6 +82,5 @@ class FileComponent(HarmonyComponent):
 
     def save(self):
         d = self.to_dict()
-        logger.debug('{}.to_dict = {}'.format(self, d))
         serialization.write(self.to_dict(), self.path)
 
