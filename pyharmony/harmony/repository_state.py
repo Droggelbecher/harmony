@@ -72,6 +72,12 @@ class RepositoryState(FileComponent):
     def set_entry(self, path, entry):
         self.files[path] = entry
 
+    def __getitem__(self, path):
+        return deepcopy(self.files.get(path, Entry(path = path)))
+
+    def __setitem__(self, path, v):
+        self.files[path] = v
+
     def overwrite(self, other):
         self.files = deepcopy(other.files)
 

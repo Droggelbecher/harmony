@@ -5,6 +5,7 @@ import socket
 import logging
 import uuid
 from collections import defaultdict
+from copy import deepcopy
 
 from harmony import hashers
 from harmony import protocols
@@ -426,10 +427,10 @@ class Repository:
         conflicts = {}
 
         for p in local_paths - remote_paths:
-            merged.set_entry( p, local_state.get_entry(p) )
+            merged[p] = local_state[p]
 
         for p in remote_paths - local_paths:
-            merged.set_entry( p, remote_state.get_entry(p) )
+            merged[p] = remote_state[p]
 
 
         # conflicts can only arise in paths that are specified in both state
@@ -439,8 +440,8 @@ class Repository:
 
 
         for path in paths:
-            local = self.repository_state.get_entry(path)
-            remote = remote_repository_state.get_entry(path)
+            local = self.repository_state[path]
+            remote = remote_repository_state[path]
 
             c = local.clock.compare(remote.clock)
             if c is None:
@@ -451,16 +452,18 @@ class Repository:
                     conflicts[path] = (local, remote)
                 else:
                     logger.debug('merge: {} automerged (same content)'.format(path))
-                    # TODO: Create a new, merged clock value!
-                    merged.set_entry(path, local)
+                    m = deepcopy(local)
+                    m.clock.update(remote.clock)
+                    m.clock.increase(self.id)
+                    merged[path] = m
 
             elif c < 0:
                 logger.debug('merge: {} newer on remote'.format(path))
-                merged.set_entry(path, remote)
+                merged[path] = remote
 
             else: # c >= 0:
                 logger.debug('merge: {} same version or newer on local'.format(path))
-                merged.set_entry(path, local)
+                merged[path] = local
 
         return conflicts, merged
 

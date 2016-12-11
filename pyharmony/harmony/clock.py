@@ -39,6 +39,19 @@ class Clock:
 
         return sign
 
+    def update(self, other):
+        for k in set(self.values.keys()) | set(other.values.keys()):
+            self.values[k] = max(
+                self.values.get(k, 0),
+                other.values.get(k, 0)
+            )
+
+    def increase(self, k):
+        self.values[k] = self.values.get(k, 0) + 1
+
+    def comparable(self, other):
+        return self.compare(other) is not None
+
     def __lt__(self, other):
         return self.compare(other) == -1
 

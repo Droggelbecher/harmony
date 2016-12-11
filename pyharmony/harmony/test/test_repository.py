@@ -121,6 +121,34 @@ class TestRepository(TestCase):
             conflicts = r2.pull_state(tmpdir1)
             self.assertEqual(1, len(conflicts))
 
+    def test_pull_state_automerge_same_content_clock_value(self):
+        # White-box test
+        with TempDir() as A, TempDir() as B:
+            rA = Repository.init(A)
+            rB = Repository.clone(B, A)
+
+            logger.debug('A.id={}'.format(rA.id))
+            logger.debug('B.id={}'.format(rB.id))
+
+            echo('Hello, World!', J(A, 'hello.txt'))
+            rA.commit()
+            state_a = rA.repository_state['hello.txt']
+
+            echo('Hello, World!', J(B, 'hello.txt'))
+            rB.commit()
+            state_b = rB.repository_state['hello.txt']
+
+            self.assertFalse(state_a.clock.comparable(state_b.clock), 'clk A={} clk B={}'.format(state_a.clock, state_b.clock))
+
+
+            rB.pull_state(A)
+
+            # Auto merge should happen and identify the same contents,
+            # resulting in a new commit in B with a merged clock value
+            state_b_new = rB.repository_state['hello.txt']
+            self.assertTrue(state_b_new.clock > state_b.clock, 'clk Bnew={} clk B={}'.format(state_b_new.clock, state_b.clock))
+            self.assertTrue(state_b_new.clock > state_a.clock, 'clk Bnew={} clk A={}'.format(state_b_new.clock, state_a.clock))
+
 
     def test_pull_state_finds_conflicts(self):
         with TempDir() as tmpdir1, TempDir() as tmpdir2:
