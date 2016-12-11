@@ -18,6 +18,17 @@ logger = logging.getLogger(__name__)
 
 class TestRepository(TestCase):
 
+    """
+    Tests the high-level functions of the Repository class.
+    This actually tests almost end-to-end (starting just below where a command
+    line interface would be), so its more of a component test than a unit test.
+
+    These tests naturally consider a lot of file-system related questions such
+    as whether a file is correctly transferred etc.. and thus make excessive use
+    of file system related functions/tools such as TempDir(), assertFileExists(),
+    etc... (see testutils for most of the implementations)
+    """
+
     def test_init_creates_harmony_dir(self):
         with TempDir() as tmpdir:
             Repository.init(tmpdir)
@@ -277,6 +288,42 @@ class TestRepository(TestCase):
             self.assertFileNotExists(J(B, 'x.txt'))
             self.assertFileNotExists(J(B, 'y.txt'))
 
+    def test_rename_updates_location_state(self):
+
+        with TempDir() as A, TempDir() as B, TempDir() as C:
+
+            rA = Repository.init(A)
+            rB = Repository.clone(B, A)
+
+            # A
+            echo('Hello, World', J(A, 'x.txt'))
+            rA.commit()
+
+            # B
+            conflicts = rB.pull_state(A)
+            rB.pull_file('x.txt', A)
+
+            # A
+            mv(J(A, 'x.txt'), J(A, 'y.txt'))
+            rA.commit()
+
+            # B
+            conflicts = rB.pull_state(A)
+            change = rB.commit()
+            self.assertFalse(change)
+
+            # We established in the previous tests already that B
+            # should now have auto-renamed x.txt to y.txt.
+            # After that it shall automatically update its location state
+            # (no additional "commit" necessary after pull_state),
+            # and thus allow the file to be retrieved as y.txt in a third
+            # repository C:
+
+            # C
+            rC = Repository.clone(C, B)
+            rC.pull_file('y.txt', B)
+            self.assertFilesEqual(J(A, 'y.txt'), J(C, 'y.txt'))
+
 
     # TODO:
     # - file deletion
@@ -299,3 +346,4 @@ if __name__ == '__main__':
     logging.basicConfig(level = logging.DEBUG, format = '{levelname:7s} {module:15s}:{funcName:15s} | {message:s}', style = '{')
     unittest.main()
 
+#  vim: set ts=4 sw=4 tw=79 expandtab :

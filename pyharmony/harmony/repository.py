@@ -382,9 +382,7 @@ class Repository:
                         os.path.join(self.working_directory.path, path),
                         os.path.join(self.working_directory.path, possible_targets.pop())
                     )
-
-        # TODO: Update location state to reflect whats happened here and test
-        # that
+        self.commit()
 
 
 
