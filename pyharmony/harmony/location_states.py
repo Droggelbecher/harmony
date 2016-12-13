@@ -24,9 +24,6 @@ class LocationState:
     def from_dict(class_, d):
         assert isinstance(d, dict)
         r = class_(**d)
-        #r.location = d['location']
-        #r.clock = d['clock']
-        #r.last_modification = d['last_modification']
         r.files = {
             k: FileState.from_dict(v)
             for k, v in d['files'].items()
@@ -72,7 +69,14 @@ class LocationStates(DirectoryComponent):
         return r
 
     def get_file_state(self, id_, path):
-        r = self.items.get(id_, LocationState()).files.get(path, FileState(path=path))
+        """
+        preconditions:
+            $path is normalized with WorkingDirectory.normalize
+        """
+        r = self.items.get(id_, LocationState()).files.get(
+            path,
+            FileState(path=path)
+        )
         return r
 
     def get_all_paths(self, id_ = None):

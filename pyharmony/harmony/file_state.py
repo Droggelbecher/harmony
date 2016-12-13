@@ -1,5 +1,6 @@
 
 import logging
+import os
 from copy import deepcopy
 
 logger = logging.getLogger(__name__)
@@ -17,9 +18,6 @@ def log_set_(s, name):
 
 class FileState:
 
-    # TODO: automatically normalize path. Either on string level or
-    # ask WorkingDirectory to do it when creating these
-
     def __init__(self, path = None, digest = None, size = None, mtime = None,
                  wipe = False):
         self.path = path
@@ -36,11 +34,6 @@ class FileState:
             self.mtime,
             self.wipe,
         )
-
-    #def __repr__(self):
-        #return 'FileState({}, digest={}, size={})'.format(
-            #self.path, self.digest, self.size
-        #)
 
     @classmethod
     def from_dict(class_, d):

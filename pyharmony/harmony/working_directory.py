@@ -6,19 +6,26 @@ from harmony import hashers
 
 class WorkingDirectory:
 
+    # TODO: Test: any paths given out by this are already normalized correctly
+
     def __init__(self, path, ruleset):
-        self.path = os.path.abspath(path)
+        self.path = os.path.realpath(path)
         self.ruleset = ruleset
+
+    def normalize(self, relpath):
+        abspath = os.path.realpath(os.path.join(self.path, relpath))
+        r = os.path.relpath(abspath, self.path)
+        return r
 
     def get_filenames(self):
         r = set()
         for file_info in self.ruleset.iterate_committable_files(self.path):
-            r.add(file_info.relative_filename)
+            r.add(self.normalize(file_info.relative_filename))
         return r
 
     def __contains__(self, path):
         return os.path.exists(
-            os.path.join(self.path, path)
+            os.path.join(self.path, self.normalize(path))
         )
 
     def file_maybe_modified(self, file_state):
@@ -76,7 +83,7 @@ class WorkingDirectory:
             mtime = size = digest = None
 
         r = FileState(
-            path = path,
+            path = self.normalize(path),
             mtime = mtime,
             size = size,
             digest = digest,
