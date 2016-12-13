@@ -1,6 +1,8 @@
 
 import logging
 
+logger = logging.getLogger(__name__)
+
 try:
     import yaml
 
@@ -47,18 +49,11 @@ else:
     class Serializable:
         pass
 
-        #@classmethod
-        #def representer(dumper, data):
-            #dumper.
-
-
-    #yaml.add_representer(Serializable, Serializable.representer)
-
-
     def read(filename):
         r = None
         with open(filename, 'r') as f:
-            r = yaml.safe_load(f.read())
+            s = f.read()
+            r = yaml.safe_load(s)
         return r
 
     def write(d, filename):

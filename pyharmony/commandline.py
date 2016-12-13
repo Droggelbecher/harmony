@@ -3,6 +3,7 @@
 import os
 import sys
 import argparse
+import logging
 
 import harmony
 from harmony.repository import Repository
@@ -106,5 +107,6 @@ def run_command(args):
 
 
 if __name__ == '__main__':
+    logging.basicConfig(level = logging.WARN, format = '{levelname:7s}: {message:s} (in: {module:s}.{funcName:s}())', style = '{')
     run_command(sys.argv[1:])
 

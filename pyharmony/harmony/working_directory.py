@@ -1,12 +1,13 @@
 
 import os
+import logging
 
 from harmony.file_state import FileState
 from harmony import hashers
 
-class WorkingDirectory:
+logger = logging.getLogger(__name__)
 
-    # TODO: Test: any paths given out by this are already normalized correctly
+class WorkingDirectory:
 
     def __init__(self, path, ruleset):
         self.path = os.path.realpath(path)
@@ -61,9 +62,13 @@ class WorkingDirectory:
         mtime = os.path.getmtime(path)
         size = os.path.getsize(path)
 
-        # TODO: proper error handling (warn that there might be a clock
-        # screwup)
-        assert mtime >= file_state.mtime
+        if file_state.mtime > mtime:
+            logger.warn('Clock screwup: Memorized modification time of {} is more recent than actual.'.format(
+                file_state.path
+            ))
+            # Default to treating the file as modified (always a safe choice in
+            # terms of consistency, might just mean unnecessary scanning work).
+            return True
 
         return mtime > file_state.mtime or size != file_state.size
 

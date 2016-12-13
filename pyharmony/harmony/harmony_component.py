@@ -43,9 +43,8 @@ class DirectoryComponent(HarmonyComponent):
     @classmethod
     def load(class_, path):
         items = {
-
             filename: class_.item_from_dict(serialization.read(os.path.join(path, filename)))
-            for filename in os.listdir(path)
+            for filename in os.listdir(path) if not filename.startswith('.')
         }
         return class_.from_dict({
             'path': path,
