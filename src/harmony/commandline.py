@@ -77,14 +77,28 @@ class PullFileCommand(Command):
         r = self.make_repository(ns)
         r.pull_file(ns.path)
 
+class AddRemoteCommand(Command):
+    command = 'add-remote'
+    help = 'add a remote location for convenient access'
+
+    def setup_parser(self, p):
+        p.add_argument('name', help = 'shorthand local name for this remote location')
+        p.add_argument('url', help = 'URL of the remote')
+
+    def execute(self, ns):
+        r = self.make_repository(ns)
+        r.add_remote(name = ns.name, location = ns.url)
+
+
 def run_command(args):
     commands = (
-            InitCommand(),
-            CommitCommand(),
-            CloneCommand(),
-            PullStateCommand(),
-            PullFileCommand()
-            )
+        InitCommand(),
+        CommitCommand(),
+        CloneCommand(),
+        PullStateCommand(),
+        PullFileCommand(),
+        AddRemoteCommand()
+    )
 
     parser = argparse.ArgumentParser(description = 'Harmony')
 

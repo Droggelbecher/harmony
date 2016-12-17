@@ -8,14 +8,18 @@ class Remotes(FileComponent):
     RELATIVE_PATH = 'remotes'
 
     class Remote:
-        def __init__(self, id_, name, location):
+        def __init__(self, id_ = None, name = None, location = None):
             self.id = id_
             self.name = name
             self.location = location
 
         @classmethod
         def from_dict(class_, d):
-            return class_(**d)
+            return class_(
+                id_ = d['id'],
+                name = d['name'],
+                location = d['location']
+            )
 
         def to_dict(self):
             return {
@@ -24,6 +28,20 @@ class Remotes(FileComponent):
                 'location': self.location
             }
 
+        def __eq__(self, other):
+            return self.id == other.id \
+                    and self.name == other.name \
+                    and self.location == other.location
+
+        def __lt__(self, other):
+            return self.id < other.id \
+                    or self.name < other.name \
+                    or self.location < other.location
+
+        def __hash__(self):
+            return hash(self.id) \
+                    ^ hash(self.name) \
+                    ^ hash(self.location)
 
 
     def __init__(self, path, by_name = None, by_id = None):
@@ -33,20 +51,29 @@ class Remotes(FileComponent):
 
     @classmethod
     def from_dict(class_, d):
-        by_name = { x['name']: Remote.from_dict(x) for x in d['remotes'] }
-        by_id = { x['id']: Remote.from_dict(x) for x in d['remotes'] }
+        by_name = { x['name']: class_.Remote.from_dict(x) for x in d['remotes'] }
+        by_id = { x['id']: class_.Remote.from_dict(x) for x in d['remotes'] }
         return class_(d['path'], by_name, by_id)
 
     def to_dict(self):
-        l = list(set(self.by_name.values()) | set(self.by_id.values()))
+        l = self._get_remotes()
         return {
-            'remotes': l,
+            'remotes': sorted(
+                [x.to_dict() for x in l],
+                key = lambda d: (d['name'], d['id'], d['location'])
+            ),
         }
 
-    def add(self, location, id_, name = None):
-        if name is not None:
-            self.by_name[name] = location
-        self.by_id[id_] = location
+    def add(self, location, name, id_ = None):
+        if name in self.by_name:
+            raise ValueError('Remote with name "{}" already exists.'.format(name))
+
+        if id_ is not None and id_ in self.by_id:
+            raise ValueError('Remote with ID "{}" already exists.'.format(id_))
+
+        self.by_name[name] = self.Remote(id_ = id_, name = name, location = location)
+        if id_ is not None:
+            self.by_id[id_] = self.Remote(id_ = id_, name = name, location = location)
 
     def get_location_any(self, s):
         """
@@ -59,16 +86,12 @@ class Remotes(FileComponent):
 
     def get_location(self, id_ = None, name = None):
         if id_ is not None and id_ in self.by_id:
-            return self.by_id[id_]
+            return self.by_id[id_].location
         if name is not None and name in self.by_name:
-            return self.by_name[name]
+            return self.by_name[name].location
         return None
 
-    def get_locations(self):
-        s = set(self.by_name.values())
-        s.update(self.by_id.values())
-        return s
-
-
+    def _get_remotes(self):
+        return list(set(self.by_name.values()) | set(self.by_id.values()))
 
 

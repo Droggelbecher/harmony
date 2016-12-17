@@ -453,10 +453,18 @@ class Repository:
 
 
     def pull_file(self, path, remote_spec):
-
         location = self.remotes.get_location_any(remote_spec)
         with protocols.connect(location) as connection:
             connection.pull_working_files([path], self.working_directory.path)
 
         self.commit()
+
+    def add_remote(self, name, location, id_=None):
+        self.remotes.add(
+            location = location,
+            name = name,
+            id_ = id_
+        )
+        self.remotes.save()
+
 
