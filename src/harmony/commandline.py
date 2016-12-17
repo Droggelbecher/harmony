@@ -18,7 +18,7 @@ class Command:
         pass
 
     def make_repository(self, ns):
-        return Repository.find(ns.repository)
+        return Repository.find(ns.cwd)
 
 
 class InitCommand(Command):
@@ -30,7 +30,7 @@ class InitCommand(Command):
 
     def execute(self, ns):
         Repository.init(
-                working_directory = ns.repository,
+                working_directory = ns.cwd,
                 name = ns.name
                 )
 
@@ -62,7 +62,7 @@ class CloneCommand(Command):
 
     def execute(self, ns):
         r = Repository.clone(
-                working_directory = ns.repository,
+                working_directory = ns.cwd,
                 location = ns.location
                 )
 
@@ -88,8 +88,9 @@ def run_command(args):
 
     parser = argparse.ArgumentParser(description = 'Harmony')
 
-    parser.add_argument('--repository',
-            help = 'harmony directory to operate on',
+    parser.add_argument('-C',
+            dest = 'cwd',
+            help = 'Run as if Harmony was started in this directory instead of current',
             default = os.getcwd()
             )
 
