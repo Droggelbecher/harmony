@@ -1,13 +1,15 @@
 
+# Harmony
 
 Harmony is a tool for synchronizing a repository of files between multiple
 locations in scenarios where there is not necessarily a single location that
 has all the files and still consistency is an issue.
 
-Harmony is inspired by git-annex (TODO: link), but strives to be a lot more
+Harmony is inspired by [git-annex](https://git-annex.branchable.com/),
+but strives to be a lot more
 straight-forward/simple both in terms of implementation as in use.
 
-== What kind of problem does this solve?
+## What kind of problem does Harmony solve?
 
 As an example, consider a large collection of media files (music, videos)
 shared across different machines.  Of course, Harmony can be used for all
@@ -28,7 +30,7 @@ following problems that can occur in this scenario:
 
  TODO: Extend
 
-== Maturity
+## Maturity
 
 Harmony is in an early stage of development. We have the first unittests
 passing for local file synchronization, but the code is not stable and no
@@ -39,9 +41,9 @@ I'll be happy to assist, but do not use it on your files without making a
 backup first.
 
 
-== How does this compare to git-annex/unison/...?
+## How does this compare to git-annex/unison/...?
 
-=== Git Annex
+### Git Annex
 
 Harmony was inspired by Git Annex but strives to be simpler. Git Annex is very
 powerful and feature rich by building on Git and providing a large variety of
@@ -49,14 +51,14 @@ synchronization protocols, a daemon that keeps watch for file changes and
 other useful extensions.  Harmony is built from scratch and follows more of a
 "keep it simple" / "do one thing well" approach.
 
-=== Unison
+### Unison
 
-Unison is a tool that allows synchronizing two repositories with some
-cleverness such as tracking changes and thus automatically choosing the newer
-version, asking the user what to do in case of conflicts.
-In contrast to Unison, Harmony does not yet have a GUI but only a command line
-interface. Unison however is geared towards point-to-point synchronization and
-can not provide a consistent repository view if files are scattered across
-multiple locations.
+[Unison](https://www.cis.upenn.edu/~bcpierce/unison/) is a tool that allows
+synchronizing two repositories with some cleverness such as tracking changes
+and thus automatically choosing the newer version, asking the user what to do
+in case of conflicts.  In contrast to Unison, Harmony does not yet have a GUI
+but only a command line interface. Unison however is geared towards
+point-to-point synchronization and can not provide a consistent repository
+view if files are scattered across multiple locations.
 
 
