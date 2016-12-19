@@ -10,13 +10,14 @@ from copy import deepcopy
 from harmony import hashers
 from harmony import protocols
 from harmony import serialization
+from harmony import file_state_logic
 from harmony.location_states import LocationStates
 from harmony.repository_state import RepositoryState
 from harmony.remotes import Remotes
 from harmony.repository_state_exception import RepositoryStateException
 from harmony.ruleset import Ruleset
 from harmony.working_directory import WorkingDirectory
-from harmony.util import short_id
+from harmony.util import shortened_id
 
 logger = logging.getLogger(__name__)
 
@@ -201,13 +202,7 @@ class Repository:
         Much more likely to collide for many repos, but incredibly useful for
         quickly understanding logs of unittests.
         """
-        return short_id(self.id)
-
-    def get_name(self):
-        return self.name
-
-    def get_url(self):
-        return self.url
+        return shortened_id(self.id)
 
     def save(self):
         self.location_states.save()
@@ -225,108 +220,17 @@ class Repository:
     # Actual repository operations
     #
 
-    def check_working_directory_clean(self):
-        """
-        Raise a RepositoryStateException if any of the following are NOT met:
-        - There is no MERGE_HEAD
-        - There are no uncommitted changes in the working directory
-
-        """
-        c = self.commit(dry_run = True)
-        if c is not None:
-            raise RepositoryStateException("Working directory not clean, commit first.")
-
-    def commit(self, dry_run = False):
-        """
-        DOCTODO
-        """
+    def commit(self):
         logger.debug('<commit> ID={} WD={}'.format(self.short_id, self.working_directory.path))
-
-        working_directory = self.working_directory
-        paths = set(working_directory.get_filenames()) \
-                | set(self.location_states.get_all_paths(self.id))
-
-
-        # 1. update location state
-        #    - detect renames (add WIPE entries later for those)
-        #    - when a file is *added* that is known to other locations w/
-        #      different digest, let user confirm what he wants to do (see
-        #      above)
-        #    - increase local clock
-        #
-        # 2. update repository state
-        #    - if file changed in step 1:
-        #      clock = current clock for local + max for each other location
-        #      hash = current local hash
-        #      (deviate from this if user selected to do something else)
-        #    - if file did not change:
-        #      no change in hash or clock
-
-
-        # Do all the file scanning before so we can be sure to do it at most
-        # once per file in the WD
-        wd_states = {
-            path: working_directory.generate_file_state(path)
-            for path in paths
-            if working_directory.file_maybe_modified(
-                self.location_states.get_file_state(self.id, path)
-            )
-        }
-
-        location_states = {
-            path: self.location_states.get_file_state(self.id, path)
-            for path in paths
-        }
-
-
-        any_change = False
-        for path in paths:
-
-            if path in wd_states:
-                file_state = location_states[path]
-                new_file_state = wd_states[path]
-                changed = self.location_states.update_file_state(self.id, new_file_state)
-                if changed:
-                    any_change = True
-
-                    # If the file vanished but a new one with the same digest
-                    # popped up, consider that a rename.
-                    # Rename means, the new file is WIPEd (instead of just
-                    # locally removed) and the new file is added as usual
-                    if not new_file_state.exists():
-                        logger.debug('{} vanished'.format(new_file_state.path))
-                        for path2 in paths:
-                            if path2 == path: continue
-                            path2_state = location_states[path2]
-                            new_path2_state = wd_states[path2]
-                            logger.debug('{} rename candidate {} ex before={} ex now={} self.digest={} candidate.digest={}'.format(
-                                path, path2, path2_state.exists(),
-                                new_path2_state.exists(),
-                                file_state.digest, new_path2_state.digest
-                            ))
-
-                            if not path2_state.exists() \
-                               and new_path2_state.exists() \
-                               and new_path2_state.digest == file_state.digest:
-                                logger.info('Detected rename: {} -> {}'.format(path, path2))
-                                new_file_state.wipe = True
-                                new_file_state.digest = file_state.digest
-                                break
-
-                    self.repository_state.update_file_state(
-                        new_file_state,
-                        self.id,
-                        self.location_states.get_clock(self.id) + 1,
-                    )
-                    logger.debug('{} committed: {} clk={}'.format(self.short_id, new_file_state.path, self.location_states.get_clock(self.id) + 1))
-                else:
-                    logger.debug('{} not actually changed: {}'.format(self.short_id, path))
-            else:
-                logger.debug('{} not changed: {}'.format(self.short_id, path))
+        any_change = file_state_logic.commit(
+            self.id,
+            self.working_directory,
+            self.location_states,
+            self.repository_state
+        )
 
         self.location_states.save()
         self.repository_state.save()
-
         logger.debug('</commit> ID={} any_change={}'.format(self.short_id, any_change))
         return any_change
 
@@ -395,7 +299,7 @@ class Repository:
 
         logger.debug('{} fetched remote state:'.format(self.short_id))
         for lid, location in remote_location_states.items.items():
-            logger.debug('  {}:'.format(short_id(lid)))
+            logger.debug('  {}:'.format(shortened_id(lid)))
             for f in location.files.values():
                 logger.debug('    {}'.format(f.__dict__))
 

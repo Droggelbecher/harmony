@@ -6,7 +6,7 @@ import logging
 from harmony import serialization
 from harmony.file_state import FileState
 from harmony.harmony_component import DirectoryComponent
-from harmony.util import datetime_to_iso, iso_to_datetime, short_id
+from harmony.util import datetime_to_iso, iso_to_datetime, shortened_id
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ class LocationStates(DirectoryComponent):
             assert isinstance(d, LocationState)
 
             if id_ not in self.items or self.items[id_].clock < d.clock:
-                logger.debug('overwriting state for {} with remote'.format(short_id(id_)))
+                logger.debug('overwriting state for {} with remote'.format(shortened_id(id_)))
                 self.items[id_] = deepcopy(d)
             else:
                 logger.debug('keeping state for {}'.format(id_))
@@ -111,20 +111,10 @@ class LocationStates(DirectoryComponent):
                 logger.debug('  clock remote: {} t={}'.format(d.clock, d.last_modification))
                 logger.debug('    {}'.format(d.files))
 
-                # Intentionally only setting ['modified'], but keeping the
-                # last_modification date as it was so file will be written and
-                # (assuming completely equal and deterministic serialization)
-                # be identical to original source file
-                # (which is not required but illustrates that we really didnt
-                # do anything to that data)
-                # EDIT: will be written anyway
-                #self.state[id_]['modified'] = True
-
     def update_file_state(self, id_, file_state_):
         file_state = deepcopy(file_state_)
 
         assert file_state.path == file_state_.path
-        #assert file_state.clock == file_state_.clock
         assert file_state.digest == file_state_.digest
 
         if id_ not in self.items:

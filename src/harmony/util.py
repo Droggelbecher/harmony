@@ -15,6 +15,6 @@ def iso_to_datetime(s):
     #return dateutil.parser.parse(s)
     return d.strptime(s, DATETIME_FORMAT)
 
-def short_id(id_):
+def shortened_id(id_):
     return id_[4:8]
 
