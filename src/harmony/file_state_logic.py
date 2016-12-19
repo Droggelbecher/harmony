@@ -1,17 +1,16 @@
 
 import logging
+import os
+from copy import deepcopy
+
 from harmony.util import shortened_id
+from harmony.repository_state import RepositoryState
 
 logger = logging.getLogger(__name__)
 
-def commit(
-    local_location_id,
-    working_directory,
-    location_states,
-    repository_state,
-):
+def commit(local_location_id, working_directory, location_states, repository_state):
     """
-    Scan the given working directory for changes and commit those to local
+    Scan the given working directory for changes and commit them to local
     state storage.
     That is, update location_states[local_location_id] with the
     new current file states (digests, "who has what?").
@@ -20,17 +19,23 @@ def commit(
 
     Parameters:
 
-    local_location_id: ID of the location that is considered local (i.e. the
-        one that belongs to the working_directory instance)
+    local_location_id:
+        ID of the location that is considered local (i.e. the one that belongs
+        to the working_directory instance)
 
-    working_directory: WorkingDirectory instance representing the local working
-        directory.
+    working_directory:
+        WorkingDirectory instance representing the local working directory.
 
-    location_states: LocationStates instance representing the local location
-        state storage. Will (possibly) be modified.
+    location_states:
+        LocationStates instance representing the local location state storage.
+        Will (possibly) be modified.
 
-    repository_state: RepositoryState instance representing the local
-        repository state storage. Will (possibly) be modified.
+    repository_state:
+        RepositoryState instance representing the local repository state
+        storage. Will (possibly) be modified.
+
+    return:
+        True iff any change was recorded.
     """
 
     id_ = local_location_id
@@ -118,4 +123,119 @@ def commit(
             logger.debug('{} not changed: {}'.format(short_id, path))
 
     return any_change
+
+
+def merge(local_state, remote_state, merger_id):
+    """
+    Merge two repository states ('local' and 'remote') into a common state if
+    possible, auto-detecting if a change only happened on one side and
+    propagating those changes.
+    For cases in which a file was changed on both sides, return details of the
+    conflict.
+
+    local_state:
+        RepositoryState() instance that reflects the local repository state.
+    remote_state:
+        RepositoryState() instance that reflects the remote repository state.
+    merger_id:
+        ID of the repository conducting the merge (assumed to correspond
+        to the 'local' repository)
+    return:
+        A pair (conflicts, merged).
+        $conflicts is a dictonary of the form { path: (local_entry, remote_entry),
+        ... } whereas $path denotes the path of a file in conflict and $local_entry
+        and $remote_entry refer to the RepositoryState.Entry instances for that
+        file that are in conflict. 
+        $merged is a newly created RepositoryState instance with selected merged
+        repository states. 
+        If $conflicts is empty, $merged covers all files present either locally or
+        remotely.
+    """
+    local_paths = set(local_state.get_paths())
+    remote_paths = set(remote_state.get_paths())
+
+    merged = RepositoryState(None)
+    conflicts = {}
+
+    for p in local_paths - remote_paths:
+        merged[p] = local_state[p]
+
+    for p in remote_paths - local_paths:
+        merged[p] = remote_state[p]
+
+
+    # conflicts can only arise in paths that are specified in both state
+    # files
+    paths = set(local_state.get_paths()) & set(remote_state.get_paths())
+
+
+    for path in paths:
+        local = local_state[path]
+        remote = remote_state[path]
+
+        c = local.clock.compare(remote.clock)
+        if c is None:
+            if local.contents_different(remote):
+                logger.debug('merge: {} in conflict: {} <-> {}'.format(
+                    path, local.clock, remote.clock
+                ))
+                conflicts[path] = (local, remote)
+            else:
+                logger.debug('merge: {} automerged (same content)'.format(path))
+                m = deepcopy(local)
+                m.clock.update(remote.clock)
+                m.clock.increase(merger_id)
+                merged[path] = m
+
+        elif c < 0:
+            logger.debug('merge: {} newer on remote'.format(path))
+            merged[path] = remote
+
+        else: # c >= 0:
+            logger.debug('merge: {} same version or newer on local'.format(path))
+            merged[path] = local
+
+    return conflicts, merged
+
+
+
+def auto_rename(working_directory, repository_state):
+    """
+    Apply automatic renaming in the given working_directory.
+    That is, if working dir contains files that are WIPEd in $repository_state but
+    are present under a different name, automatically rename those to obtain
+    the repository file at a low cost.
+
+    Repository.commit() should be called after calling this to commit the
+    changes to the working directory.
+
+    precondition: WD clean
+    """
+
+    # Automatically apply auto-renaming
+    # Auto-renaming
+    # -------------
+    # 1. Find any files $A with a WIPE entry.
+    # 2. Compute/get their digest (from location state)
+    # 3. Find a non-wiped file $B in repo that does not exist in the WD
+    # 4. Rename $A to $B
+
+    for path, entry in repository_state.files.items():
+        if entry.wipe and (entry.path in working_directory):
+            possible_targets = {
+                e.path for e in repository_state.files.values()
+                if e.path != path and e.digest == entry.digest and not e.wipe
+            }
+            logger.info(
+                '{} could be auto-renamed to any of {}'.format(
+                    path, possible_targets
+                )
+            )
+            if possible_targets:
+                os.rename(
+                    os.path.join(working_directory.path, path),
+                    os.path.join(working_directory.path, possible_targets.pop())
+                    )
+
+
 
