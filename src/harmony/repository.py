@@ -20,6 +20,10 @@ from harmony.util import short_id
 
 logger = logging.getLogger(__name__)
 
+# TODO; Make this a more-or-less pure facade, that just deals
+# with bringing other components together under a common interface,
+# i.e. move things like merge logic elsewhere
+
 class Repository:
 
     HARMONY_SUBDIR = '.harmony'
@@ -466,5 +470,14 @@ class Repository:
             id_ = id_
         )
         self.remotes.save()
+
+    def remove_remote(self, name):
+        self.remotes.remove(
+            name = name
+        )
+        self.remotes.save()
+
+    def get_remotes(self):
+        return self.remotes.get_remotes()
 
 

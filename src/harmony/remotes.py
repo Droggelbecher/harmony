@@ -56,7 +56,7 @@ class Remotes(FileComponent):
         return class_(d['path'], by_name, by_id)
 
     def to_dict(self):
-        l = self._get_remotes()
+        l = self.get_remotes()
         return {
             'remotes': sorted(
                 [x.to_dict() for x in l],
@@ -91,7 +91,7 @@ class Remotes(FileComponent):
             return self.by_name[name].location
         return None
 
-    def _get_remotes(self):
+    def get_remotes(self):
         return list(set(self.by_name.values()) | set(self.by_id.values()))
 
 

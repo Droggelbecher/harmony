@@ -1,25 +1,8 @@
 #!/usr/bin/env python3
 
-import os
-import sys
-import argparse
-import logging
-
-import harmony
 from harmony.repository import Repository
-
-class Command:
-    def add_to_parser(self, subparsers):
-        p = subparsers.add_parser(self.command, help = self.help)
-        p.set_defaults(obj = self)
-        self.setup_parser(p)
-
-    def setup_parser(self, p):
-        pass
-
-    def make_repository(self, ns):
-        return Repository.find(ns.cwd)
-
+from harmony.cli.command import Command, CommandGroup
+from harmony.cli import console
 
 class InitCommand(Command):
     command = 'init'
@@ -77,51 +60,62 @@ class PullFileCommand(Command):
         r = self.make_repository(ns)
         r.pull_file(ns.path)
 
-class AddRemoteCommand(Command):
-    command = 'add-remote'
-    help = 'add a remote location for convenient access'
 
-    def setup_parser(self, p):
-        p.add_argument('name', help = 'shorthand local name for this remote location')
-        p.add_argument('url', help = 'URL of the remote')
+class RemoteCommand(CommandGroup):
+    command = 'remote'
+    help = 'Manipulate the local directory of remote locations'
 
-    def execute(self, ns):
-        r = self.make_repository(ns)
-        r.add_remote(name = ns.name, location = ns.url)
+    class AddCommand(Command):
+        command = 'add'
+        help = 'add a remote location for convenient access'
 
+        def setup_parser(self, p):
+            p.add_argument('name', help = 'shorthand local name for this remote location')
+            p.add_argument('url', help = 'URL of the remote')
 
-def run_command(args):
-    commands = (
-        InitCommand(),
-        CommitCommand(),
-        CloneCommand(),
-        PullStateCommand(),
-        PullFileCommand(),
-        AddRemoteCommand()
-    )
+        def execute(self, ns):
+            r = self.make_repository(ns)
+            r.add_remote(name = ns.name, location = ns.url)
 
-    parser = argparse.ArgumentParser(description = 'Harmony')
+    class RemoveCommand(Command):
+        command = 'remove'
+        aliases = ('rm', )
+        help = 'remove a remote location by name'
 
-    parser.add_argument('-C',
-            dest = 'cwd',
-            help = 'Run as if Harmony was started in this directory instead of current',
-            default = os.getcwd()
+        def setup_parser(self, p):
+            p.add_argument('name', help = 'name of the remote to remove')
+
+        def execute(self, ns):
+            r = self.make_repository(ns)
+            r.remove_remote(name = ns.name)
+
+    class ListCommand(Command):
+        command = 'list'
+        aliases = ('ls', )
+        help = 'list known remotes'
+
+        def execute(self, ns):
+            r = self.make_repository(ns)
+            remotes = r.get_remotes()
+            console.write_table(
+                [(r.name, r.location) for r in remotes],
+                #headers = ('Name', 'URL')
             )
 
-    subparsers = parser.add_subparsers()
-
-    for command in commands:
-        command.add_to_parser(subparsers)
-
-    ns = parser.parse_args(args)
-    if hasattr(ns, 'obj'):
-        ns.obj.execute(ns)
-
-    else:
-        print(parser.format_help())
+    commands = (
+        AddCommand(),
+        RemoveCommand(),
+        ListCommand()
+    )
 
 
-if __name__ == '__main__':
-    logging.basicConfig(level = logging.WARN, format = '{levelname:7s}: {message:s} (in: {module:s}.{funcName:s}())', style = '{')
-    run_command(sys.argv[1:])
+COMMANDS = (
+    InitCommand(),
+    CommitCommand(),
+    CloneCommand(),
+    PullStateCommand(),
+    PullFileCommand(),
+    RemoteCommand()
+)
+
 
