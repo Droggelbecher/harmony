@@ -64,14 +64,6 @@ class RepositoryState(FileComponent):
     def get_paths(self):
         return self.files.keys()
 
-    # TODO: turn get_entry/set_entry into item access
-
-    def get_entry(self, path):
-        return deepcopy(self.files.get(path, Entry(path = path)))
-
-    def set_entry(self, path, entry):
-        self.files[path] = entry
-
     def __getitem__(self, path):
         return deepcopy(self.files.get(path, Entry(path = path)))
 
@@ -83,7 +75,7 @@ class RepositoryState(FileComponent):
 
     def update_file_state(self, new_state, id_, clock_value):
         path = new_state.path
-        entry = self.get_entry(path)
+        entry = deepcopy(self[path])
 
         if new_state.digest == entry.digest and new_state.wipe == entry.wipe:
             # Nothing changed, really, no need to update anything.
@@ -92,5 +84,5 @@ class RepositoryState(FileComponent):
         entry.wipe = new_state.wipe
         entry.digest = new_state.digest
         entry.clock.values[id_] = clock_value
-        self.set_entry(path, entry)
+        self[path] = entry
 
