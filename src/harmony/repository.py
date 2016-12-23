@@ -303,4 +303,7 @@ class Repository:
     def get_remotes(self):
         return self.remotes.get_remotes()
 
+    def get_files(self):
+        return self.repository_state.get_paths()
+
 

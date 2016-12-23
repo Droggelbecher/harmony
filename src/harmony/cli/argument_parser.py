@@ -17,7 +17,7 @@ def run_command(args):
             default = os.getcwd()
             )
 
-    subparsers = parser.add_subparsers()
+    subparsers = parser.add_subparsers(title = 'subcommands')
     for command in COMMANDS:
         command.add_to_parser(subparsers)
 

@@ -31,11 +31,15 @@ def write_table(rows, headers = None):
 
     if headers is not None:
         print_row(headers)
-        print("-" * (sum(max_column_widths) + len(spacer) * len(headers)))
+        out.write("-" * (sum(max_column_widths) + len(spacer) * len(headers)) + '\n')
 
     for row in rows:
         print_row(row)
 
+def write_list(elements):
+    out = sys.stdout
 
+    for e in elements:
+        out.write(e + '\n')
 
 

@@ -49,16 +49,39 @@ class CloneCommand(Command):
                 location = ns.location
                 )
 
-class PullFileCommand(Command):
-    command = 'pull-file'
-    help = 'get current version of given file into this repository'
 
-    def setup_parser(self, p):
-        p.add_argument('path', help = 'path of file (relative to repository root)')
+class FileCommand(CommandGroup):
+    command = 'file'
+    help = 'List or transfer actual file contents'
 
-    def execute(self, ns):
-        r = self.make_repository(ns)
-        r.pull_file(ns.path)
+    class PullCommand(Command):
+        # TODO: Write test ensuring this gets the most recent version in the
+        # presence of multiple versions
+
+        command = 'pull'
+        help = 'get current version of given file into this repository'
+
+        def setup_parser(self, p):
+            p.add_argument('path', help = 'path of file (relative to repository root)')
+
+        def execute(self, ns):
+            r = self.make_repository(ns)
+            r.pull_file(ns.path)
+
+    class ListCommand(Command):
+        command = 'list'
+        aliases = ('ls', )
+        help = 'list files tracked in this repository'
+
+        def execute(self, ns):
+            r = self.make_repository(ns)
+            files = r.get_files()
+            console.write_list(files)
+
+    commands = (
+        ListCommand(),
+        PullCommand(),
+    )
 
 
 class RemoteCommand(CommandGroup):
@@ -103,9 +126,9 @@ class RemoteCommand(CommandGroup):
             )
 
     commands = (
+        ListCommand(),
         AddCommand(),
         RemoveCommand(),
-        ListCommand()
     )
 
 
@@ -114,7 +137,7 @@ COMMANDS = (
     CommitCommand(),
     CloneCommand(),
     PullStateCommand(),
-    PullFileCommand(),
+    FileCommand(),
     RemoteCommand()
 )
 
