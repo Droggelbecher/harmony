@@ -303,7 +303,42 @@ class Repository:
     def get_remotes(self):
         return self.remotes.get_remotes()
 
+    # TODO:
+    # Maybe rather have a single get_files returning:
+    # [
+    #   RichFileInfo(
+    #       path = ...,
+    #       present_locally = True / False,
+    #       up_to_date = True / False,
+    #       wiping = True / False,
+    #       up_to_date_sources = [...],
+    #       ...
+    #       ),
+    #       ...
+    #   ]
+    #
+    # ... but that would compile a lot of information most of which is often
+    # thrown away.
+    # So we need to be able to say what we need:
+    # 
+    # get_files(self, gather_up_to_date_sources = False,
+    #   gather_sources = False, check_up_to_date = False,
+    #   ...
+    #   )
+    #
+
     def get_files(self):
         return self.repository_state.get_paths()
+
+    def get_outdated_files(self):
+        files = self.location_states.get_all_paths(self.id)
+        outdated = []
+        for path in files:
+            le = self.location_states.get_file_state(self.id, path)
+            re = self.repository_state.get(path)
+            if re is not None and le is not None and re.digest != le.digest:
+                outdated.append(path)
+        return outdated
+
 
 

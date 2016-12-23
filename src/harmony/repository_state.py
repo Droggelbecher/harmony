@@ -64,6 +64,9 @@ class RepositoryState(FileComponent):
     def get_paths(self):
         return self.files.keys()
 
+    def get(self, path, default = None):
+        return self.files.get(path, default)
+
     def __getitem__(self, path):
         return deepcopy(self.files.get(path, Entry(path = path)))
 

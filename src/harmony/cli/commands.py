@@ -30,11 +30,11 @@ class PullStateCommand(Command):
     help = 'pull state from given remote or all that are available'
 
     def setup_parser(self, p):
-        p.add_argument('remotes', nargs = '+', help = 'remote(s) to pull from, defaults to all known')
+        p.add_argument('remote', help = 'remote to pull from')
 
     def execute(self, ns):
         r = self.make_repository(ns)
-        r.pull_state(remote_specs = ns.remotes)
+        r.pull_state(remote_spec = ns.remote)
 
 class CloneCommand(Command):
     command = 'clone'
@@ -78,8 +78,19 @@ class FileCommand(CommandGroup):
             files = r.get_files()
             console.write_list(files)
 
+    class ListOutdatedCommand(Command):
+        command = 'list-outdated'
+        aliases = ('lso', )
+        help = 'list working directory files for which a newer version is available'
+
+        def execute(self, ns):
+            r = self.make_repository(ns)
+            files = r.get_outdated_files()
+            console.write_list(files)
+
     commands = (
         ListCommand(),
+        ListOutdatedCommand(),
         PullCommand(),
     )
 

@@ -106,7 +106,7 @@ class LocationStates(DirectoryComponent):
                 self.items[id_] = deepcopy(d)
             else:
                 logger.debug('keeping state for {}'.format(id_))
-                logger.debug('  clock local:  {} t={}'.format(self.items[id_].clock, self.items[id_]['last_modification']))
+                logger.debug('  clock local:  {} t={}'.format(self.items[id_].clock, self.items[id_].last_modification))
                 logger.debug('    {}'.format(self.items[id_].files))
                 logger.debug('  clock remote: {} t={}'.format(d.clock, d.last_modification))
                 logger.debug('    {}'.format(d.files))
