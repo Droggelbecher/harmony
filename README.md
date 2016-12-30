@@ -16,16 +16,16 @@ shared across different machines.  Of course, Harmony can be used for all
 kinds of files, this is just an example.  In particular lets consider the
 following problems that can occur in this scenario:
 
- * There might *not be a single machine having all the files*, yet when a file
+ * There might **not be a single machine having all the files**, yet when a file
    is changed (eg. you correct the author name in a music files metadata),
    that change should be reflected on other devices.
    The same should hold through for renaming/moving of files.
 
- * Machines might *not be online when you make a change*, that means
+ * Machines might **not be online when you make a change**, that means
    synchronization might be delayed for long periods of time which can lead to
    changes to the same file happening at different places in parallel.
 
- * *Files may be large*. That is, transfer of files should only happen when it
+ * **Files may be large**. That is, transfer of files should only happen when it
    is really requested and thus be independent from state synchronization.
 
  TODO: Extend
@@ -42,6 +42,17 @@ backup first.
 
 
 ## How does this compare to git-annex/unison/...?
+
+
+Tool                                             | Complete History | Handles large files well | Partial Checkouts | Feature-Richness
+-----                                            |------------------|--------------------------|-----------------  |-------
+VCS (like Git)                                   | Yes              | No                       | No  |
+VCS LFS extensions (like Git LFS)                | Yes              | Yes                      | No  |
+Git Annex                                        | Yes              | Yes                      | Yes | Feature-rich / complex
+Boar                                             | Yes              | Yes                      | No  | ?
+Directory Synchronizers (like Unison, Syncthing) | No               | Yes                      | No  | 
+Harmony                                          | No               | Yes                      | Yes | Lean / "KISS"
+
 
 ### Git Annex
 
