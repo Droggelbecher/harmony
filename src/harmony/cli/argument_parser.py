@@ -24,11 +24,14 @@ def run_command(args):
     ns = parser.parse_args(args)
     if hasattr(ns, 'obj'):
 
-        try:
-            ns.obj.run(parser, ns)
-        except Exception as e:
-            logging.error(e)
-            sys.exit(1)
+        ns.obj.run(parser, ns)
+        if 0:
+            try:
+                ns.obj.run(parser, ns)
+            except Exception as e:
+                logging.error(type(e))
+                logging.error(e)
+                sys.exit(1)
 
     else:
         print(parser.format_help())

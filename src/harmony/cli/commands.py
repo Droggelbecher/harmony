@@ -12,10 +12,7 @@ class InitCommand(Command):
         p.add_argument('--name', default = None, required = False)
 
     def execute(self, ns):
-        Repository.init(
-                working_directory = ns.cwd,
-                name = ns.name
-                )
+        Repository.init( working_directory = ns.cwd, name = ns.name )
 
 class CommitCommand(Command):
     command = 'commit'
@@ -49,51 +46,68 @@ class CloneCommand(Command):
                 location = ns.location
                 )
 
+class StatusCommand(Command):
+    command = 'status'
+    aliases = ('st', )
+    help = 'list working directory files for which a newer version is available'
 
-class FileCommand(CommandGroup):
-    command = 'file'
-    help = 'List or transfer actual file contents'
+    def execute(self, ns):
+        r = self.make_repository(ns)
+        # 1. find all them outdated files and their recent digests
+        # 2. find locations that have them and file sizes
+        files = r.get_files()
 
-    class PullCommand(Command):
-        # TODO: Write test ensuring this gets the most recent version in the
-        # presence of multiple versions
+        def status(f):
 
-        command = 'pull'
-        help = 'get current version of given file into this repository'
+            s = ' '
+            if not f.exists_in_repository:
+                s = '?'
 
-        def setup_parser(self, p):
-            p.add_argument('path', help = 'path of file (relative to repository root)')
+            else:
+                if f.exists_in_location_state:
+                    if not f.exists_in_workdir:
+                        s = 'D'
+                    elif f.maybe_modified:
+                        s = 'M'
+                    else:
+                        s = ' '
 
-        def execute(self, ns):
-            r = self.make_repository(ns)
-            r.pull_file(ns.path)
+                else:
+                    if f.exists_in_workdir:
+                        # File is known in repository but was not expected in this location
+                        # (didnt come here via 'hm get')
+                        s = 'A'
+                    else:
+                        # file is currently ignored by this repository
+                        s = 'i'
 
-    class ListCommand(Command):
-        command = 'list'
-        aliases = ('ls', )
-        help = 'list files tracked in this repository'
+            s += ' ' if f.is_most_recent else 'O'
 
-        def execute(self, ns):
-            r = self.make_repository(ns)
-            files = r.get_files()
-            console.write_list(files)
+            return s
 
-    class ListOutdatedCommand(Command):
-        command = 'list-outdated'
-        aliases = ('lso', )
-        help = 'list working directory files for which a newer version is available'
+        console.write_table([(status(f), f.path) for f in files])
 
-        def execute(self, ns):
-            r = self.make_repository(ns)
-            files = r.get_outdated_files()
-            console.write_list(files)
+class GetCommand(Command):
+    # TODO: Write test ensuring this gets the most recent version in the
+    # presence of multiple versions
 
-    commands = (
-        ListCommand(),
-        ListOutdatedCommand(),
-        PullCommand(),
-    )
+    command = 'get'
+    help = 'get current version of given file into this repository'
 
+    # TODO
+    #     Think more about how the user interface of this should be like.
+    #     This should rather look like
+    #
+    #     hm get [filename]
+    #         Get the latest version from any available remote
+
+    def setup_parser(self, p):
+        p.add_argument('path', help = 'path of file (relative to repository root)')
+        p.add_argument('remote_spec', help = 'Location to pull from')
+
+    def execute(self, ns):
+        r = self.make_repository(ns)
+        r.pull_file(ns.path, ns.remote_spec)
 
 class RemoteCommand(CommandGroup):
     command = 'remote'
@@ -148,7 +162,8 @@ COMMANDS = (
     CommitCommand(),
     CloneCommand(),
     PullStateCommand(),
-    FileCommand(),
+    StatusCommand(),
+    GetCommand(),
     RemoteCommand()
 )
 

@@ -89,12 +89,18 @@ def commit(local_location_id, working_directory, location_states, repository_sta
 
                 # If the file vanished but a new one with the same digest
                 # popped up, consider that a rename.
-                # Rename means, the new file is WIPEd (instead of just
+                # Rename means, the old file is WIPEd (instead of just
                 # locally removed) and the new file is added as usual
                 if not new_file_state.exists():
                     logger.debug('{} vanished'.format(new_file_state.path))
+
+                    # Iterate over paths to find a possible rename target
                     for path2 in paths:
-                        if path2 == path: continue
+                        # Rename to itself does not make sense
+                        # Rename to a file that has not changed (or better: just appeared) does not make sense
+                        if path2 == path or path2 not in wd_states:
+                            continue
+
                         path2_state = location_state_cache[path2]
                         new_path2_state = wd_states[path2]
                         logger.debug('{} rename candidate {} ex before={} ex now={} self.digest={} candidate.digest={}'.format(

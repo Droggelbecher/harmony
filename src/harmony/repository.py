@@ -303,42 +303,42 @@ class Repository:
     def get_remotes(self):
         return self.remotes.get_remotes()
 
-    # TODO:
-    # Maybe rather have a single get_files returning:
-    # [
-    #   RichFileInfo(
-    #       path = ...,
-    #       present_locally = True / False,
-    #       up_to_date = True / False,
-    #       wiping = True / False,
-    #       up_to_date_sources = [...],
-    #       ...
-    #       ),
-    #       ...
-    #   ]
-    #
-    # ... but that would compile a lot of information most of which is often
-    # thrown away.
-    # So we need to be able to say what we need:
-    # 
-    # get_files(self, gather_up_to_date_sources = False,
-    #   gather_sources = False, check_up_to_date = False,
-    #   ...
-    #   )
-    #
+    # TODO: Align the various get_files() / get_filenames() / get_paths() methods
+    # in various classes to a common naming convention.
 
     def get_files(self):
-        return self.repository_state.get_paths()
 
-    def get_outdated_files(self):
-        files = self.location_states.get_all_paths(self.id)
-        outdated = []
+        class FileInfo:
+            pass
+
+        files = self.repository_state.get_paths()
+        fileinfos = []
         for path in files:
-            le = self.location_states.get_file_state(self.id, path)
             re = self.repository_state.get(path)
-            if re is not None and le is not None and re.digest != le.digest:
-                outdated.append(path)
-        return outdated
+            assert re is not None
+            le = self.location_states.get_file_state(self.id, path)
+
+            f = FileInfo()
+            f.path = path
+
+            f.exists_in_repository = True
+            f.maybe_modified = self.working_directory.file_maybe_modified(le)
+            f.exists_in_workdir = path in self.working_directory
+            f.exists_in_location_state = le.exists()
+            f.is_most_recent = not le.exists() or le.digest == re.digest
+
+            fileinfos.append(f)
+
+        wd_only_files = set(self.working_directory.get_filenames()) - set(files)
+        for path in wd_only_files:
+            f = FileInfo()
+            f.path = path
+            f.exists_in_repository = False
+            f.is_most_recent = True
+            fileinfos.append(f)
+
+        return fileinfos
+
 
 
 
