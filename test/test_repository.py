@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 
 import sys
-sys.path.append('..')
 
 import os
 from os.path import join as J
 import unittest
 import logging
 
-from testutils import *
+from test.utils import *
 from harmony.repository import Repository
 
 LOCATION_STATE_DIR = 'location_states'
@@ -26,7 +25,7 @@ class TestRepository(TestCase):
     These tests naturally consider a lot of file-system related questions such
     as whether a file is correctly transferred etc.. and thus make excessive use
     of file system related functions/tools such as TempDir(), assertFileExists(),
-    etc... (see testutils for most of the implementations)
+    etc... (see test.utils for most of the implementations)
     """
 
     def test_init_creates_harmony_dir(self):

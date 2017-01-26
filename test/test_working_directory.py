@@ -8,7 +8,7 @@ from os.path import join as J
 import unittest
 import logging
 
-from testutils import *
+from test.utils import *
 from harmony.working_directory import WorkingDirectory
 from harmony.ruleset import Ruleset
 
