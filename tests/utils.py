@@ -5,11 +5,13 @@ import os
 import os.path
 import unittest
 
+from pathlib import Path
+
 KEEP_TEMPDIRS = True
 
 class TempDir:
     def __init__(self):
-        self.path = tempfile.mkdtemp(prefix='harmony-test-tmp')
+        self.path = Path(tempfile.mkdtemp(prefix='harmony-test-tmp')).resolve()
 
     def __enter__(self):
         return self.path
@@ -18,16 +20,58 @@ class TempDir:
         if not KEEP_TEMPDIRS:
             shutil.rmtree(self.name)
 
-def mkdir(*args):
-    os.makedirs(os.path.join(*args), exist_ok=True)
 
-def echo(s, *args):
-    filename = os.path.join(*args)
-    with open(filename, 'w') as f:
-        f.write(s)
+def directories_equal(dir1, dir2, msg='', failure_base=None):
 
-def mv(a, b):
-    os.rename(a, b)
+    dir1 = Path(dir1)
+    dir2 = Path(dir2)
+
+    if failure_base is None:
+        failure_base = '{} and {} unqual dirs'.format(dir1, dir2)
+
+    if not dir1.is_dir() or not dir2.is_dir():
+        return False
+
+    files_dir1 = set(f.name for f in dir1.iterdir())
+    files_dir2 = set(f.name for f in dir2.iterdir())
+
+    if files_dir1 != files_dir2:
+        s = '''{}: filelists of
+{}
+and
+{}
+do not match.
+In both:
+{}
+In first but not second:
+{}
+In second but not first:
+{}
+'''.format(failure_base, dir1, dir2,
+       '  ' + ('\n  '.join(str(f) for f in (files_dir1 & files_dir2)) or '(None)'),
+       '  ' + ('\n  '.join(str(f) for f in (files_dir1 - files_dir2)) or '(None)'),
+       '  ' + ('\n  '.join(str(f) for f in (files_dir2 - files_dir1)) or '(None)'),
+      )
+        assert False, s
+
+    directories = [f for f in files_dir1 if (dir1 / f).is_dir()]
+    for directory in directories:
+        r = directories_equal(
+                dir1 / directory,
+                dir2 / directory,
+                msg = msg,
+                failure_base = failure_base
+                )
+        if not r:
+            return False
+
+    files = [f for f in files_dir1 if (dir1 / f).is_file()]
+    for filename in files:
+        if (dir1 / filename).read_bytes() != (dir2 / filename).read_bytes():
+            return False
+
+    return True
+
 
 class TestCase(unittest.TestCase):
 

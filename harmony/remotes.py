@@ -11,8 +11,10 @@ class Remotes(FileComponent):
         def __init__(self, id_ = None, name = None, location = None):
             self.id = id_
             self.name = name
-            self.location = location
+            self.location = str(location)
 
+        # TODO: Can we make these from_dict / to_dict things less verbose for the common case?
+        #       That is, by default serialize __dict__ or __slots__ or whatever?
         @classmethod
         def from_dict(class_, d):
             return class_(

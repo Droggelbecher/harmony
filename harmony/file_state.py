@@ -2,25 +2,22 @@
 import logging
 import os
 from copy import deepcopy
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 logger.setLevel(logging.INFO)
 
-def cmp_(a, b):
-    return (a > b) - (a < b)
-
-def log_set_(s, name):
-    logger.debug('{}:'.format(name))
-    for e in s:
-        logger.debug('  {}'.format(e))
-    logger.debug('')
-
 class FileState:
+    """
+    Represents a recorded file's state (hash value, size, etc...).
+    Generated in WorkingDirectory, stored in LocationState.
+    """
+    # TODO: Possibly move this into WorkingDirectory, make consistent with location_state.Entry
 
     def __init__(self, path = None, digest = None, size = None, mtime = None,
                  wipe = False):
-        self.path = path
+        self.path = Path(path)
         self.digest = digest
         self.size = size
         self.mtime = mtime
@@ -41,7 +38,7 @@ class FileState:
 
     def to_dict(self):
         return {
-            'path': self.path,
+            'path': str(self.path),
             'digest': self.digest,
             'size': self.size,
             'mtime': self.mtime,

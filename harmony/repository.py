@@ -1,6 +1,6 @@
 
 import os
-import os.path
+from pathlib import Path
 import socket
 import logging
 import uuid
@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 class Repository:
 
-    HARMONY_SUBDIR = '.harmony'
-    REPOSITORY_FILE = 'config'
+    HARMONY_SUBDIR = Path('.harmony')
+    REPOSITORY_FILE = Path('config')
 
     #
     # Factory classmethods (returning Repository instances)
@@ -42,7 +42,7 @@ class Repository:
         if name is None:
             name = class_.generate_name(working_directory)
 
-        os.mkdir(harmony_directory)
+        harmony_directory.mkdir()
 
         repo = Repository(working_directory, harmony_directory)
 
@@ -59,6 +59,11 @@ class Repository:
 
         repo.id = uuid.uuid1().hex
         repo.name = name
+
+        logging.info('Initialized repository')
+        logging.info('  ID  : {} ({})'.format(shortened_id(repo.id), repo.id))
+        logging.info('  Name: {}'.format(repo.name))
+        logging.info('  WD  : {}'.format(repo.working_directory.path))
 
         repo.save()
 
@@ -81,12 +86,14 @@ class Repository:
         """
         @return Repository instance for repo in working_directory.
         """
+        harmony_directory = Path(harmony_directory)
+
         working_directory = class_.find_working_directory_here(harmony_directory)
         repo = class_(working_directory, harmony_directory)
 
         # TODO: implement a Configuration class so we can use
         # Configuration.load(...) here
-        repo_config = serialization.read(os.path.join(harmony_directory, Repository.REPOSITORY_FILE))
+        repo_config = serialization.read(harmony_directory / Repository.REPOSITORY_FILE)
 
         repo.id = repo_config['id']
         repo.name = repo_config['name']
@@ -102,13 +109,20 @@ class Repository:
         repo.remotes = load_component(Remotes)
         repo.working_directory = WorkingDirectory(working_directory, repo.ruleset)
 
+        logging.info('Loaded repository')
+        logging.info('  ID  : {} ({})'.format(shortened_id(repo.id), repo.id))
+        logging.info('  Name: {}'.format(repo.name))
+        logging.info('  WD  : {}'.format(repo.working_directory.path))
+
         return repo
 
     @classmethod
     def clone(class_, working_directory, location, name = None):
+        working_directory = Path(working_directory)
+    
         # Create empty repo $r in target location
         target_repo = class_.init(working_directory, name)
-        config_path = os.path.join(class_.HARMONY_SUBDIR, class_.REPOSITORY_FILE)
+        config_path = class_.HARMONY_SUBDIR / class_.REPOSITORY_FILE
 
         with protocols.connect(location) as connection:
             files = connection.pull_harmony_files([config_path])
@@ -134,16 +148,19 @@ class Repository:
 
     @classmethod
     def generate_name(class_, working_directory):
-        return '{}-{}'.format(socket.gethostname(), os.path.basename(working_directory))
+        working_directory = Path(working_directory)
+        return '{}-{}'.format(socket.gethostname(), working_directory.name)
 
     @classmethod
     def find_harmony_directory_here(class_, working_directory):
-        if os.path.basename(working_directory) == class_.HARMONY_SUBDIR:
+        working_directory = Path(working_directory)
+        if Path(working_directory.name) == Path(class_.HARMONY_SUBDIR):
             return working_directory
-        return os.path.join(working_directory, class_.HARMONY_SUBDIR)
+        return working_directory / class_.HARMONY_SUBDIR
 
     @classmethod
     def find_harmony_directory(class_, working_directory):
+        working_directory = Path(working_directory)
         search_start = working_directory
 
         # Traverse directories upwards until a '.harmony' subdir is
@@ -152,14 +169,13 @@ class Repository:
         # directory anymore (shouldnt happen in a sane filesystem)
 
         harmony_dir = None
-        working_directory = os.path.abspath(working_directory)
-        while os.path.isdir(working_directory) and not os.path.ismount(working_directory):
-            d = os.path.join(working_directory, class_.HARMONY_SUBDIR)
-            if os.path.isdir(d):
+        working_directory = working_directory.resolve()
+        while working_directory.is_dir() and not os.path.ismount(str(working_directory)):
+            d = working_directory / class_.HARMONY_SUBDIR
+            if d.is_dir():
                 harmony_dir = d
                 break
-            working_directory = os.path.join(working_directory, os.path.pardir)
-            working_directory = os.path.abspath(working_directory)
+            working_directory = working_directory.parent.resolve()
 
         if harmony_dir is None:
             raise FileNotFoundError('No harmony repository found in "{}".  Search stopped in "{}"'.format(
@@ -168,8 +184,8 @@ class Repository:
 
     @classmethod
     def find_working_directory_here(class_, working_directory):
-        if os.path.basename(working_directory) == class_.HARMONY_SUBDIR:
-            return os.path.join(working_directory, '..')
+        if Path(working_directory.name) == Path(class_.HARMONY_SUBDIR):
+            return working_directory.parent.resolve()
         return working_directory
 
 
@@ -208,14 +224,13 @@ class Repository:
                 'id': self.id,
                 'name': self.name,
                 }
-        serialization.write(d, os.path.join(self.harmony_directory, Repository.REPOSITORY_FILE))
+        serialization.write(d, self.harmony_directory / Repository.REPOSITORY_FILE)
 
     #
     # Actual repository operations
     #
 
     def commit(self):
-        logger.debug('<commit> ID={} WD={}'.format(self.short_id, self.working_directory.path))
         any_change = file_state_logic.commit(
             self.id,
             self.working_directory,
@@ -225,7 +240,7 @@ class Repository:
 
         self.location_states.save()
         self.repository_state.save()
-        logger.debug('</commit> ID={} any_change={}'.format(self.short_id, any_change))
+        logger.debug('{} committed. Changes seen: {}'.format(self.short_id, any_change))
         return any_change
 
     def pull_state(self, remote_spec):
@@ -252,8 +267,9 @@ class Repository:
     def fetch(self, remote_spec):
         location = self.remotes.get_location_any(remote_spec)
 
-        logger.debug('{} fetching from {} which is at {}'.format(
-            self.short_id, remote_spec, location
+        logger.debug('{} fetching from {} which is at {} to {}'.format(
+            self.short_id, remote_spec, location,
+            self.harmony_directory
         ))
 
         location_states_path = LocationStates.get_path(self.HARMONY_SUBDIR)
@@ -302,41 +318,52 @@ class Repository:
     def get_remotes(self):
         return self.remotes.get_remotes()
 
-    # TODO: Align the various get_files() / get_filenames() / get_paths() methods
-    # in various classes to a common naming convention.
+    def get_file_stats(self):
+        """
+        Return a list of FileStatus() objects describing the status
+        of all files in the repository.
+        """
 
-    def get_files(self):
+        class FileStatus:
+            __slots__ = (
+                'path',
+                'exists_in_repository',
+                'maybe_modified',
+                'exists_in_workdir',
+                'exists_in_location_state',
+                'is_most_recent'
+                )
 
-        class FileInfo:
-            pass
+            def __init__(self, **kws):
+                self.__dict__.update(kws)
 
         files = self.repository_state.get_paths()
-        fileinfos = []
+        stats = []
         for path in files:
             re = self.repository_state.get(path)
             assert re is not None
             le = self.location_states.get_file_state(self.id, path)
 
-            f = FileInfo()
-            f.path = path
-
-            f.exists_in_repository = True
-            f.maybe_modified = self.working_directory.file_maybe_modified(le)
-            f.exists_in_workdir = path in self.working_directory
-            f.exists_in_location_state = le.exists()
-            f.is_most_recent = not le.exists() or le.digest == re.digest
-
-            fileinfos.append(f)
+            f = FileStatus(
+                path = path,
+                exists_in_repository = True,
+                maybe_modified = self.working_directory.file_maybe_modified(le),
+                exists_in_workdir = path in self.working_directory,
+                exists_in_location_state = le.exists(),
+                is_most_recent = not le.exists() or le.digest == re.digest,
+                )
+            stats.append(f)
 
         wd_only_files = set(self.working_directory.get_filenames()) - set(files)
         for path in wd_only_files:
-            f = FileInfo()
-            f.path = path
-            f.exists_in_repository = False
-            f.is_most_recent = True
-            fileinfos.append(f)
+            f = FileStatus(
+                path = path,
+                exists_in_repository = False,
+                is_most_recent = True,
+                )
+            stats.append(f)
 
-        return fileinfos
+        return stats
 
 
 

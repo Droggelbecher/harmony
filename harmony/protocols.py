@@ -2,11 +2,14 @@
 import os.path
 import shutil
 import glob
+from pathlib import Path
 
+# TODO: Document, use metaclass or __init_subclass__ to automatically register protocols
+# TODO: Implement first remote protocol
 class Protocol:
     pass
 
-
+# TODO: Document
 class Connection:
 
     def __init__(self, protocol, location):
@@ -38,6 +41,7 @@ class Connection:
         self.cleanup_callbacks.append(cleanup)
         return paths
 
+# TODO: Document
 class FileProtocol(Protocol):
 
     def connect(self, location):
@@ -57,18 +61,22 @@ class FileProtocol(Protocol):
         return None
 
     def normalize_uri(self, location):
+        location = str(location)
         if location.startswith('file://'):
             location = location[len('file://'):]
         location = os.path.abspath(location)
         return location
 
     def pull_harmony_files(self, location, paths):
-        assert location != '/'
+        assert str(location) != '/'
         location = self.normalize_uri(location)
-        return {p: os.path.join(location, p) for p in paths}, lambda: None
+        r = {p: os.path.join(location, str(p)) for p in paths}, lambda: None
+        return r
 
     def pull_working_files(self, location, paths, working_directory):
+        working_directory = str(working_directory)
         for path in paths:
+            path = str(path)
             shutil.copyfile(os.path.join(location, path), os.path.join(working_directory, path))
         return {p: os.path.join(working_directory, p) for p in paths}, lambda: None
         
@@ -80,7 +88,8 @@ def get_protocols():
     return _protocols
 
 def connect(location):
-    assert isinstance(location, str)
+    assert isinstance(location, str) or isinstance(location, Path)
+    location = str(location)
     for protocol in get_protocols():
         normalized = protocol.normalize_and_verify(location)
         if normalized is not None:

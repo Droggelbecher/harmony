@@ -1,6 +1,7 @@
 
 import os
 import logging
+from pathlib import Path
 
 from harmony.file_state import FileState
 from harmony import hashers
@@ -10,13 +11,16 @@ logger = logging.getLogger(__name__)
 class WorkingDirectory:
 
     def __init__(self, path, ruleset):
-        self.path = os.path.realpath(path)
+        self.path = Path(path).resolve()
         self.ruleset = ruleset
 
     def normalize(self, relpath):
-        abspath = os.path.realpath(os.path.join(self.path, relpath))
-        r = os.path.relpath(abspath, self.path)
-        return r
+        abspath = (self.path / relpath)
+        try:
+            abspath = abspath.resolve()
+        except FileNotFoundError:
+            pass
+        return abspath.relative_to(self.path)
 
     def get_filenames(self):
         r = set()
@@ -25,9 +29,7 @@ class WorkingDirectory:
         return r
 
     def __contains__(self, path):
-        return os.path.exists(
-            os.path.join(self.path, self.normalize(path))
-        )
+        return (self.path / self.normalize(path)).exists()
 
     def file_maybe_modified(self, file_state):
         """
@@ -42,10 +44,10 @@ class WorkingDirectory:
         can be assumed the file has not changed. If it returns True it might or
         might not have been changed.
         """
-        path = os.path.join(self.path, file_state.path)
+        path = self.path / file_state.path
 
         exists_before = file_state.size is not None
-        exists_now = os.path.exists(path)
+        exists_now = path.exists()
 
         if not exists_before and not exists_now:
             # Nothing changed on the non-existance of this file in this
@@ -59,8 +61,8 @@ class WorkingDirectory:
 
         assert exists_before and exists_now
 
-        mtime = os.path.getmtime(path)
-        size = os.path.getsize(path)
+        mtime = path.stat().st_mtime
+        size = path.stat().st_size
 
         if file_state.mtime > mtime:
             logger.warn('Clock screwup: Memorized modification time of {} is more recent than actual.'.format(
@@ -74,14 +76,13 @@ class WorkingDirectory:
 
     def generate_file_state(self, path):
         hasher = hashers.get_hasher('default')
-        full_path = os.path.join(self.path, path)
-
-        exists = os.path.exists(full_path)
+        full_path = self.path / path
+        exists = full_path.exists()
 
         if exists:
-            mtime = os.path.getmtime(full_path)
-            size = os.path.getsize(full_path)
-            with open(full_path, 'rb') as f:
+            mtime = full_path.stat().st_mtime
+            size = full_path.stat().st_size
+            with full_path.open('rb') as f:
                 digest = hasher(f)
 
         else:

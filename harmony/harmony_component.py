@@ -2,16 +2,18 @@
 import os
 import glob
 import logging
+from pathlib import Path
 
 from harmony import serialization
 
 logger = logging.getLogger(__name__)
 
+
 class HarmonyComponent:
 
     @classmethod
     def get_path(class_, harmony_directory):
-        return os.path.join(harmony_directory, class_.RELATIVE_PATH)
+        return Path(harmony_directory) / class_.RELATIVE_PATH
 
     @classmethod
     def init(class_, path):
@@ -32,7 +34,8 @@ class DirectoryComponent(HarmonyComponent):
 
     @classmethod
     def init(class_, path):
-        os.mkdir(path)
+        path = Path(path)
+        path.mkdir()
         r = super(DirectoryComponent, class_).init(path)
         return r
 
@@ -42,9 +45,10 @@ class DirectoryComponent(HarmonyComponent):
 
     @classmethod
     def load(class_, path):
+        path = Path(path)
         items = {
-            filename: class_.item_from_dict(serialization.read(os.path.join(path, filename)))
-            for filename in os.listdir(path) if not filename.startswith('.')
+            filename.name: class_.item_from_dict(serialization.read(filename))
+            for filename in path.iterdir() if not str(filename).startswith('.')
         }
         return class_.from_dict({
             'path': path,
@@ -52,7 +56,7 @@ class DirectoryComponent(HarmonyComponent):
         })
 
     def __init__(self, path, items):
-        self.path = path
+        self.path = Path(path)
         self.items = items
 
     def item_to_dict(self, item):
@@ -60,14 +64,16 @@ class DirectoryComponent(HarmonyComponent):
 
     def to_dict(self):
         return {
-            'path': self.path,
+            'path': str(self.path),
             'items': { k: self.item_to_dict(v) for k, v in self.items.items() },
         }
 
     def save(self):
         d = self.to_dict()
         for filename, v in d['items'].items():
-            serialization.write(v, os.path.join(self.path, filename))
+            p = Path(self.path) / filename
+            logger.debug('{} saving item to {}'.format(self.__class__.__name__, p))
+            serialization.write(v, p)
 
 
 class FileComponent(HarmonyComponent):
@@ -75,11 +81,12 @@ class FileComponent(HarmonyComponent):
     @classmethod
     def load(class_, path):
         d = serialization.read(path)
-        d['path'] = path
+        d['path'] = Path(path)
         return class_.from_dict(d)
 
 
     def save(self):
         d = self.to_dict()
-        serialization.write(self.to_dict(), self.path)
+        logger.debug('{} saving to {}'.format(self.__class__.__name__, self.path))
+        serialization.write(d, self.path)
 

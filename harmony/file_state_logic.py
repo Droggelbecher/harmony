@@ -174,7 +174,6 @@ def merge(local_state, remote_state, merger_id):
     # files
     paths = set(local_state.get_paths()) & set(remote_state.get_paths())
 
-
     for path in paths:
         local = local_state[path]
         remote = remote_state[path]
@@ -206,6 +205,9 @@ def merge(local_state, remote_state, merger_id):
 
 
 def auto_rename(working_directory, repository_state):
+    from harmony.working_directory import WorkingDirectory
+
+    assert isinstance(working_directory, WorkingDirectory)
     """
     Apply automatic renaming in the given working_directory.
     That is, if working dir contains files that are WIPEd in $repository_state but
@@ -227,6 +229,7 @@ def auto_rename(working_directory, repository_state):
     # 4. Rename $A to $B
 
     for path, entry in repository_state.files.items():
+        logger.debug('auto_rename: {}: path={} wipe={} in_wd={}'.format(path, entry.path, entry.wipe, (entry.path in working_directory)))
         if entry.wipe and (entry.path in working_directory):
             possible_targets = {
                 e.path for e in repository_state.files.values()
@@ -238,10 +241,7 @@ def auto_rename(working_directory, repository_state):
                 )
             )
             if possible_targets:
-                os.rename(
-                    os.path.join(working_directory.path, path),
-                    os.path.join(working_directory.path, possible_targets.pop())
-                    )
+                (working_directory.path / path).rename(working_directory.path / possible_targets.pop())
 
 
 

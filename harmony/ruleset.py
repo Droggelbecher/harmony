@@ -141,6 +141,9 @@ class Ruleset(FileComponent):
                 yield file_info
 
     def iterate_files(self, working_directory):
+        # TODO: do this with pathlib
+        working_directory = str(working_directory)
+
         for root, dirs, files in os.walk(working_directory):
             for filename in files:
                 absfn = os.path.join(root, filename)

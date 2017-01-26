@@ -7,7 +7,6 @@ def cmp_(a, b):
     return (a > b) - (a < b)
 
 class Clock:
-
     def __init__(self, **kws):
         self.values = dict(kws)
 
@@ -27,6 +26,14 @@ class Clock:
         return self.values
 
     def compare(self, other):
+        """
+        Compare with other clock instance.
+        Return:
+            -1: self is lower than other
+             0: self and other are equal
+             1: self is greater than other
+            None: self and other are not comparable.
+        """
         keys = set(self.values.keys()).union(other.values.keys())
 
         sign = 0
@@ -40,6 +47,10 @@ class Clock:
         return sign
 
     def update(self, other):
+        """
+        Update based on other clock instance.
+        Return a new clock instance with values being the maximum of self and other.
+        """
         for k in set(self.values.keys()) | set(other.values.keys()):
             self.values[k] = max(
                 self.values.get(k, 0),

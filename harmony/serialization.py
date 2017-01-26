@@ -3,65 +3,34 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-try:
-    import yaml
+import yaml
+import pathlib
 
-except ImportError:
+# TODO: Merge this with harmony_component.py
 
-    logging.warn("""
-    PYTHON-YAML NOT FOUND.
-    HARMONY IS NOT OPERATIONAL FOR PRODUCTION WITHOUT PYTHON-YAML.
-    IT WILL HOWEVER CONTINUE USING JSON FOR THE SOLE PURPOSE
-    OF TESTING/PLAYING AROUND WITH IT.
+def read(filename):
+    filename = str(filename)
+    r = None
+    with open(filename, 'r') as f:
+        s = f.read()
+        r = yaml.safe_load(s)
+    return r
 
-    COMMITS CREATED IN THIS STATE WILL BE INCOMPATIBLE
-    WITH ONES CREATED USING PYTHON-YAML.
+def write(d, filename):
+    filename = str(filename)
+    with open(filename, 'w') as f:
+        logger.debug('writing: {}'.format(filename))
+        yaml.safe_dump(d, f)
 
-    * * * * * * * * * * * * * * * * * * * * *
+def dump(d):
+    return yaml.safe_dump(d)
 
-    IF YOU ARE *NOT* A HARMQNY DEVELOPER, ABORT NOW AND INSTALL PYTHON-YAML.
-
-    * * * * * * * * * * * * * * * * * * * * *
-    """)
-
-    # Harmony uses YaML.
-    # As temporary fix for machines where I have no yaml
-    # available (and no internet connection, damn!),
-    # Use json for unit testing.
-
-    import json
-
-    def read(filename):
-        with open(filename, 'r') as f:
-            r = json.load(f)
-        return r
-
-    def write(d, filename):
-        with open(filename, 'w') as f:
-            json.dump(d, f)
-
-    def dump(d):
-        return json.dumps(d)
-
-else:
-
-
-    class Serializable:
-        pass
-
-    def read(filename):
-        r = None
-        with open(filename, 'r') as f:
-            s = f.read()
-            r = yaml.safe_load(s)
-        return r
-
-    def write(d, filename):
-        with open(filename, 'w') as f:
-            yaml.safe_dump(d, f)
-
-    def dump(d):
-        return yaml.safe_dump(d)
-
-
+# Note: The below would work for auto-converting paths to str's,
+# but would require yaml.dump() instead of yaml.safe_dump() which
+# would use tags (which I try to avoid for future parsability w/
+# different libraries/languages)
+#def represent_path(dumper, data):
+#    return dumper.represent_str(str(data))
+#yaml.add_representer(pathlib.Path, represent_path)
+#yaml.add_representer(pathlib.PosixPath, represent_path)
 

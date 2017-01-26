@@ -2,6 +2,7 @@
 import datetime
 from copy import deepcopy
 import logging
+from pathlib import Path
 
 from harmony import serialization
 from harmony.file_state import FileState
@@ -25,7 +26,7 @@ class LocationState:
         assert isinstance(d, dict)
         r = class_(**d)
         r.files = {
-            k: FileState.from_dict(v)
+            Path(k): FileState.from_dict(v)
             for k, v in d['files'].items()
         }
         return r
@@ -36,7 +37,7 @@ class LocationState:
             'clock': self.clock,
             'last_modification': self.last_modification,
             'files': {
-                k: v.to_dict()
+                str(k): v.to_dict()
                 for k, v in self.files.items()
             }
         }
@@ -73,6 +74,8 @@ class LocationStates(DirectoryComponent):
         preconditions:
             $path is normalized with WorkingDirectory.normalize
         """
+        path = Path(path)
+
         r = self.items.get(id_, LocationState()).files.get(
             path,
             FileState(path=path)
@@ -102,7 +105,7 @@ class LocationStates(DirectoryComponent):
             assert isinstance(d, LocationState)
 
             if id_ not in self.items or self.items[id_].clock < d.clock:
-                logger.debug('overwriting state for {} with remote'.format(shortened_id(id_)))
+                logger.debug('overwriting state for {} (={}) with remote'.format(shortened_id(id_), id_))
                 self.items[id_] = deepcopy(d)
             else:
                 logger.debug('keeping state for {}'.format(id_))
