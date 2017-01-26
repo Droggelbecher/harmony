@@ -82,7 +82,7 @@ class WorkingDirectory:
             mtime = os.path.getmtime(full_path)
             size = os.path.getsize(full_path)
             with open(full_path, 'rb') as f:
-                digest = hasher(f.read())
+                digest = hasher(f)
 
         else:
             mtime = size = digest = None

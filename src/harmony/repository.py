@@ -6,7 +6,6 @@ import logging
 import uuid
 from collections import defaultdict
 
-from harmony import hashers
 from harmony import protocols
 from harmony import serialization
 from harmony import file_state_logic
