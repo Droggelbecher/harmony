@@ -1,4 +1,0 @@
-
-class RepositoryStateException(Exception):
-    pass
-

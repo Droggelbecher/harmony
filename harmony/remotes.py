@@ -1,34 +1,17 @@
 
 import os.path
 from harmony import serialization
-from harmony.harmony_component import FileComponent
+from harmony.serialization import FileSerializable, Serializable
 
-class Remotes(FileComponent):
+class Remotes(FileSerializable):
 
     RELATIVE_PATH = 'remotes'
 
-    class Remote:
+    class Remote(Serializable):
         def __init__(self, id_ = None, name = None, location = None):
             self.id = id_
             self.name = name
             self.location = str(location)
-
-        # TODO: Can we make these from_dict / to_dict things less verbose for the common case?
-        #       That is, by default serialize __dict__ or __slots__ or whatever?
-        @classmethod
-        def from_dict(class_, d):
-            return class_(
-                id_ = d['id'],
-                name = d['name'],
-                location = d['location']
-            )
-
-        def to_dict(self):
-            return {
-                'id': self.id,
-                'name': self.name,
-                'location': self.location
-            }
 
         def __eq__(self, other):
             return self.id == other.id \

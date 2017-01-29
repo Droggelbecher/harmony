@@ -4,6 +4,7 @@ import shutil
 import os
 import os.path
 import unittest
+import warnings
 
 from pathlib import Path
 
@@ -52,7 +53,8 @@ In second but not first:
        '  ' + ('\n  '.join(str(f) for f in (files_dir1 - files_dir2)) or '(None)'),
        '  ' + ('\n  '.join(str(f) for f in (files_dir2 - files_dir1)) or '(None)'),
       )
-        assert False, s
+        warnings.warn(s)
+        return False
 
     directories = [f for f in files_dir1 if (dir1 / f).is_dir()]
     for directory in directories:
@@ -68,6 +70,22 @@ In second but not first:
     files = [f for f in files_dir1 if (dir1 / f).is_file()]
     for filename in files:
         if (dir1 / filename).read_bytes() != (dir2 / filename).read_bytes():
+            s = '''{}: file contents of
+{}
+and
+{}
+differ.
+
+--- {}
+{}
+
+--- {}
+{}
+'''.format(failure_base, dir1 / filename, dir2 / filename,
+    (dir1 / filename), (dir1 / filename).read_text(), 
+    (dir2 / filename), (dir2 / filename).read_text(),
+    )
+            warnings.warn(s)
             return False
 
     return True

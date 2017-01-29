@@ -1,12 +1,22 @@
 
 import logging
 
+from harmony.serialization import Serializable
+
 logger = logging.getLogger(__name__)
 
 def cmp_(a, b):
     return (a > b) - (a < b)
 
-class Clock:
+class Clock(Serializable):
+
+    @classmethod
+    def from_dict(class_, d):
+        return class_(**d)
+
+    def to_dict(self):
+        return self.values
+
     def __init__(self, **kws):
         self.values = dict(kws)
 
@@ -17,13 +27,6 @@ class Clock:
                 for k, v in self.values.items()
             )
         )
-
-    @classmethod
-    def from_dict(class_, d):
-        return class_(**d)
-
-    def to_dict(self):
-        return self.values
 
     def compare(self, other):
         """

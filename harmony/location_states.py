@@ -4,14 +4,20 @@ from copy import deepcopy
 import logging
 from pathlib import Path
 
-from harmony import serialization
-from harmony.file_state import FileState
-from harmony.harmony_component import DirectoryComponent
+from harmony.working_directory import FileState
+from harmony.serialization import Serializable, DirectorySerializable
 from harmony.util import datetime_to_iso, iso_to_datetime, shortened_id
 
 logger = logging.getLogger(__name__)
 
-class LocationState:
+class LocationState(Serializable):
+
+    _state = (
+        'files',
+        'clock',
+        'last_modification',
+        'location',
+        )
 
     def __init__(self, files = None, clock = None, last_modification = None,
                  modified = False, location = None):
@@ -23,37 +29,22 @@ class LocationState:
 
     @classmethod
     def from_dict(class_, d):
-        assert isinstance(d, dict)
-        r = class_(**d)
+        r = super().from_dict(d)
         r.files = {
             Path(k): FileState.from_dict(v)
-            for k, v in d['files'].items()
+            for k, v in r.files.items()
         }
         return r
 
-    def to_dict(self):
-        return {
-            'location': self.location,
-            'clock': self.clock,
-            'last_modification': self.last_modification,
-            'files': {
-                str(k): v.to_dict()
-                for k, v in self.files.items()
-            }
-        }
 
-class LocationStates(DirectoryComponent):
+class LocationStates(DirectorySerializable):
 
     RELATIVE_PATH = 'location_states'
+    Item = LocationState
 
     @staticmethod
     def now():
         return datetime_to_iso(datetime.datetime.now())
-
-    @classmethod
-    def item_from_dict(class_, d):
-        assert isinstance(d, dict)
-        return LocationState.from_dict(d)
 
     def __init__(self, path, items = None):
         super(LocationStates, self).__init__(path, items if items else {})
@@ -65,7 +56,7 @@ class LocationStates(DirectoryComponent):
     def item_to_dict(self, item):
         if item.modified:
             item.clock += 1
-        r = item.to_dict()
+        r = super().item_to_dict(item)
         item.modified = False
         return r
 
@@ -78,7 +69,7 @@ class LocationStates(DirectoryComponent):
 
         r = self.items.get(id_, LocationState()).files.get(
             path,
-            FileState(path=path)
+            FileState(path = path)
         )
         return r
 

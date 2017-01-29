@@ -3,10 +3,38 @@ import os
 import logging
 from pathlib import Path
 
-from harmony.file_state import FileState
 from harmony import hashers
+from harmony.serialization import Serializable
 
 logger = logging.getLogger(__name__)
+
+class FileState(Serializable):
+    """
+    Represents a recorded file's state (hash value, size, etc...).
+    Generated in WorkingDirectory, stored in LocationState.
+    """
+
+    def __init__(self, path = None, digest = None, size = None, mtime = None, wipe = False):
+        self.path = Path(path)
+        self.digest = digest
+        self.size = size
+        self.mtime = mtime
+        self.wipe = wipe
+
+    def __deepcopy__(self, memo):
+        return self.__class__(
+            self.path,
+            self.digest,
+            self.size,
+            self.mtime,
+            self.wipe,
+        )
+
+    def exists(self):
+        return self.size is not None
+
+    def contents_different(self, other):
+        return self.size != other.size or self.digest != other.digest
 
 class WorkingDirectory:
 

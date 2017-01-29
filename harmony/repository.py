@@ -10,9 +10,8 @@ from harmony import protocols
 from harmony import serialization
 from harmony import file_state_logic
 from harmony.location_states import LocationStates
-from harmony.repository_state import RepositoryState
+from harmony.repository_state import RepositoryState, RepositoryStateException
 from harmony.remotes import Remotes
-from harmony.repository_state_exception import RepositoryStateException
 from harmony.ruleset import Ruleset
 from harmony.working_directory import WorkingDirectory
 from harmony.util import shortened_id
@@ -231,6 +230,7 @@ class Repository:
     #
 
     def commit(self):
+        logger.debug('{} committing...'.format(self.short_id))
         any_change = file_state_logic.commit(
             self.id,
             self.working_directory,

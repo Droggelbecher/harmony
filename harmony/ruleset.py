@@ -5,19 +5,25 @@ import fnmatch
 
 from harmony import hashers
 from harmony import serialization
-from harmony.harmony_component import FileComponent
+from harmony.serialization import FileSerializable
 
-class Ruleset(FileComponent):
+class Ruleset(FileSerializable):
 
     RELATIVE_PATH = 'rules'
+    _state = (
+        'rules',
+    )
 
     class FileInfo:
         pass
 
     @classmethod
     def init(class_, path):
-        r = super(Ruleset, class_).init(path)
+        r = super().init(path)
 
+        # When starting from scratch, create a few basic rules
+        # that ensure a minimal sanity of the repository state
+        # (especially not to track .harmony)
         r.add_rule(
                 match = {},
                 hasher = hashers.DEFAULT,
@@ -41,7 +47,10 @@ class Ruleset(FileComponent):
 
     @classmethod
     def load(class_, path):
-        r = super(Ruleset, class_).load(path)
+        # If we load an empty ruleset that would mean we treat .harmony
+        # the same as the rest of the working dir, that probably means
+        # something is very wrong.
+        r = super().load(path)
         assert len(r.rules) > 0
         return r
 
@@ -88,7 +97,7 @@ class Ruleset(FileComponent):
         return match_recursive(0, 0)
         
 
-         #TODO: this should more behave like rsyncs matching
+        # TODO: this should more behave like rsyncs matching
 
         #pattern = pattern.replace('.', '\\.')
         #pattern = pattern.replace('?', '.')
@@ -128,12 +137,6 @@ class Ruleset(FileComponent):
                 'dirname': Ruleset.match_directory,
                 'filename': Ruleset.match_filename,
                 }
-
-    def to_dict(self):
-        return {
-            'rules': self.rules,
-        }
-
 
     def iterate_committable_files(self, working_directory):
         for file_info in self.iterate_files(working_directory):

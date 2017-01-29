@@ -391,7 +391,7 @@ def test_rename_updates_location_state():
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level = logging.DEBUG, format = '{levelname:7s} {module:15s}:{funcName:15s} | {message:s}', style = '{')
+    logging.basicConfig(level = logging.DEBUG, format = '{levelname:7s} {module:20s}:{funcName:15s} | {message:s}', style = '{')
     unittest.main()
 
 #  vim: set ts=4 sw=4 tw=79 expandtab :

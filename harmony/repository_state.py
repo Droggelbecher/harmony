@@ -2,15 +2,27 @@
 import logging
 from copy import deepcopy
 from pathlib import Path
+from collections import ChainMap
 
-from harmony.harmony_component import FileComponent
+from harmony.serialization import FileSerializable, Serializable
 from harmony.clock import Clock
 from harmony import serialization
 
 logger = logging.getLogger(__name__)
 
-# TODO: Make more consistent with FileState
-class Entry:
+class RepositoryStateException(Exception):
+    pass
+
+class RepositoryFileState(Serializable):
+
+    """
+    A RepositoryFileState represents one of possibly many known
+    states of a file from the point of view of the whole repository,
+    that is, (amongst other things), its digest and clock.  It does
+    specifically not contain any information about availability on
+    remotes, which is handled by working_directory.FileState.
+    """
+
     def __init__(self, path = None, digest = None, clock = Clock(), wipe = False):
         self.digest = digest
         self.path = Path(path) if path is not None else None
@@ -19,20 +31,9 @@ class Entry:
 
     @classmethod
     def from_dict(class_, d):
-        e = class_()
-        e.digest = d['digest']
-        e.path = Path(d['path'])
-        e.clock = Clock.from_dict(d['clock'])
-        e.wipe = d['wipe']
-        return e
-
-    def to_dict(self):
-        return {
-            'digest': self.digest,
-            'path': str(self.path),
-            'clock': self.clock.to_dict(),
-            'wipe': self.wipe,
-        }
+        d = ChainMap({ 'clock': Clock(**d['clock']) }, d)
+        r = super().from_dict(d)
+        return r
 
     def contents_different(self, other):
         return self.digest != other.digest
@@ -40,7 +41,7 @@ class Entry:
     def __repr__(self):
         return str(self.__dict__)
 
-class RepositoryState(FileComponent):
+class RepositoryState(FileSerializable):
 
     RELATIVE_PATH = 'repository_state'
 
@@ -53,18 +54,10 @@ class RepositoryState(FileComponent):
         return class_(
             d['path'],
             files = {
-                f: Entry.from_dict(v)
+                f: RepositoryFileState.from_dict(v)
                 for f, v in d['files'].items()
             }
         )
-
-    def to_dict(self):
-        return {
-            'files': {
-                str(f): v.to_dict()
-                for f, v in self.files.items()
-            }
-        }
 
     def get_paths(self):
         return self.files.keys()
@@ -73,7 +66,7 @@ class RepositoryState(FileComponent):
         return self.files.get(path, default)
 
     def __getitem__(self, path):
-        return deepcopy(self.files.get(str(path), Entry(path = path)))
+        return deepcopy(self.files.get(str(path), RepositoryFileState(path = path)))
 
     def __setitem__(self, path, v):
         self.files[str(path)] = v
