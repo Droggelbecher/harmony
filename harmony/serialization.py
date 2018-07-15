@@ -147,6 +147,8 @@ class FileSerializable(Serializable):
 
     def save(self):
         d = self.to_dict()
+        if 'path' in d:
+            del d['path']
         write(d, self.path)
 
 

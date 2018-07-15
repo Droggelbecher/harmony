@@ -183,7 +183,7 @@ class Repository:
 
     @classmethod
     def find_working_directory_here(class_, working_directory):
-        if Path(working_directory.name) == Path(class_.HARMONY_SUBDIR):
+        if Path(working_directory) == Path(class_.HARMONY_SUBDIR):
             return working_directory.parent.resolve()
         return working_directory
 
