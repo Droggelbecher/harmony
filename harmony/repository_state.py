@@ -3,6 +3,7 @@ import logging
 from copy import deepcopy
 from pathlib import Path
 from collections import ChainMap
+from typing import Iterable
 
 from harmony.serialization import FileSerializable, Serializable
 from harmony.clock import Clock
@@ -59,11 +60,11 @@ class RepositoryState(FileSerializable):
             }
         )
 
-    def get_paths(self):
-        return self.files.keys()
+    def get_paths(self) -> Iterable[Path]:
+        return tuple(Path(p) for p in self.files.keys())
 
-    def get(self, path, default = None):
-        return self.files.get(path, default)
+    def get(self, path : Path, default = None):
+        return self.files.get(str(path), default)
 
     def __getitem__(self, path):
         return deepcopy(self.files.get(str(path), RepositoryFileState(path = path)))

@@ -3,6 +3,7 @@
 from harmony.repository import Repository
 from harmony.cli.command import Command, CommandGroup
 from harmony.cli import console
+import logging
 
 class InitCommand(Command):
     command = 'init'
@@ -52,10 +53,13 @@ class StatusCommand(Command):
     help = 'list working directory files for which a newer version is available'
 
     def execute(self, ns):
+        logger = logging.getLogger(__name__)
+
         r = self.make_repository(ns)
         # 1. find all them outdated files and their recent digests
         # 2. find locations that have them and file sizes
         files = r.get_file_stats()
+        logger.debug(f'file stats: {files}')
 
         def status(f):
 

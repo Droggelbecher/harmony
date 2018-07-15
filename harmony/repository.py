@@ -326,6 +326,15 @@ class Repository:
         """
 
         class FileStatus:
+            def __init__(self, **kws):
+                self.__dict__.update(kws)
+
+            def __repr__(self):
+                return 'St(' + ' '.join(
+                    f'{k}={v}' for k, v in
+                    self.__dict__.items()
+                ) + ')'
+
             #__slots__ = (
             #   'path',
             #   'exists_in_repository',
@@ -335,10 +344,10 @@ class Repository:
             #   'is_most_recent'
             #   )
 
-            def __init__(self, **kws):
-                self.__dict__.update(kws)
 
         files = self.repository_state.get_paths()
+        logger.debug(f'files in repo: {files}')
+
         stats = []
         for path in files:
             re = self.repository_state.get(path)
@@ -355,7 +364,9 @@ class Repository:
                 )
             stats.append(f)
 
+        logger.debug(f'wd files: {self.working_directory.get_filenames()}')
         wd_only_files = set(self.working_directory.get_filenames()) - set(files)
+        logger.debug(f'wd only files: {wd_only_files}')
         for path in wd_only_files:
             f = FileStatus(
                 path = path,
