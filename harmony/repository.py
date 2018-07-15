@@ -335,16 +335,6 @@ class Repository:
                     self.__dict__.items()
                 ) + ')'
 
-            #__slots__ = (
-            #   'path',
-            #   'exists_in_repository',
-            #   'maybe_modified',
-            #   'exists_in_workdir',
-            #   'exists_in_location_state',
-            #   'is_most_recent'
-            #   )
-
-
         files = self.repository_state.get_paths()
         logger.debug(f'files in repo: {files}')
 

@@ -21,7 +21,9 @@ class CommitCommand(Command):
 
     def execute(self, ns):
         r = self.make_repository(ns)
-        r.commit()
+        any_change = r.commit()
+        if not any_change:
+            print('Nothing to commit.')
 
 class PullStateCommand(Command):
     command = 'pull-state'
