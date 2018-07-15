@@ -32,6 +32,12 @@ d_harmony = Repository.HARMONY_SUBDIR
 def setup():
     logging.basicConfig(level = logging.DEBUG, format = '{levelname:7s} {module:15s}:{funcName:15s} | {message:s}', style = '{')
 
+def test_find_workdir_here():
+    with TempDir() as d:
+        r = Repository.init(d)
+        assert r.find_working_directory_here(d / d_harmony) == d
+
+
 def test_init_creates_harmony_dir():
     with TempDir() as d:
         Repository.init(d)
