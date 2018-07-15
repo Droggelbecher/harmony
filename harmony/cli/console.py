@@ -13,19 +13,20 @@ def write_table(rows, headers = None):
     out = sys.stdout
 
     if headers is not None:
-        max_column_widths = [len(s) for s in headers]
+        max_column_widths = [len(str(s)) for s in headers]
     else:
-        max_column_widths = [len(s) for s in rows[0]]
+        max_column_widths = [len(str(s)) for s in rows[0]]
 
     for row in rows:
         max_column_widths = [
-            max(c, len(s))
+            max(c, len(str(s)))
             for c, s in zip(max_column_widths, row)
         ]
 
     def print_row(row):
         for s, w in zip(row, max_column_widths):
-            out.write(s + filler * (w - len(s)))
+            ss = str(s)
+            out.write(ss + filler * (w - len(ss)))
             out.write(spacer)
         out.write('\n')
 

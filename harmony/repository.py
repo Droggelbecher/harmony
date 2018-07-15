@@ -325,14 +325,14 @@ class Repository:
         """
 
         class FileStatus:
-            __slots__ = (
-                'path',
-                'exists_in_repository',
-                'maybe_modified',
-                'exists_in_workdir',
-                'exists_in_location_state',
-                'is_most_recent'
-                )
+            #__slots__ = (
+            #   'path',
+            #   'exists_in_repository',
+            #   'maybe_modified',
+            #   'exists_in_workdir',
+            #   'exists_in_location_state',
+            #   'is_most_recent'
+            #   )
 
             def __init__(self, **kws):
                 self.__dict__.update(kws)

@@ -55,7 +55,7 @@ class StatusCommand(Command):
         r = self.make_repository(ns)
         # 1. find all them outdated files and their recent digests
         # 2. find locations that have them and file sizes
-        files = r.get_files()
+        files = r.get_file_stats()
 
         def status(f):
 
