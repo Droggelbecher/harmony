@@ -17,11 +17,20 @@ def run_command(args):
             default = os.getcwd()
             )
 
+    parser.add_argument('-l',
+            dest = 'loglevel',
+            help = 'One of CRITICAL,ERROR,WARN,INFO,DEBUG; defaults to WARN',
+            default = 'WARN'
+            )
+
     subparsers = parser.add_subparsers(title = 'subcommands')
     for command in COMMANDS:
         command.add_to_parser(subparsers)
 
     ns = parser.parse_args(args)
+
+    logging.getLogger().setLevel(getattr(logging, ns.loglevel))
+
     if hasattr(ns, 'obj'):
 
         ns.obj.run(parser, ns)
