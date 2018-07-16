@@ -1,6 +1,8 @@
 
 # Harmony
 
+![](/docs/wa.png)
+
 Harmony is a tool for synchronizing a repository of files between multiple
 locations in scenarios where there is not necessarily a single location that
 has all the files and still consistency is an issue.
@@ -11,10 +13,10 @@ straight-forward/simple both in terms of implementation as in use.
 
 ## What kind of problem does Harmony solve?
 
-As an example, consider a large collection of media files (music, videos)
-shared across different machines.  Of course, Harmony can be used for all
-kinds of files, this is just an example.  In particular lets consider the
-following problems that can occur in this scenario:
+As an example, consider a large collection of media files (music, videos,
+large binary asset files for a software development project)
+shared across different machines.  In particular lets consider the
+following challenges that can occur in this scenario:
 
  * There might **not be a single machine having all the files**, yet when a file
    is changed (eg. you correct the author name in a music files metadata),
@@ -26,19 +28,25 @@ following problems that can occur in this scenario:
    changes to the same file happening at different places in parallel.
 
  * **Files may be large**. That is, transfer of files should only happen when it
-   is really requested and thus be independent from state synchronization.
+   is really requested and thus be independent from state synchronizatio.
 
- TODO: Extend
+ * There is **no single master location** which is the only one where files
+   will be renamed/restructured/changed while all others just read from it.
+   Everyone that has some of the files should be able to work on the naming
+   and directory structure, possibly in conflicting ways in parallel (which of
+   course might require later conflict resolution).
+
 
 ## Maturity
 
-Harmony is in an early stage of development. We have the first unittests
-passing for local file synchronization, but the code is not stable and no
-remote synchronization is implemented yet.
+Harmony is in an early stage of development. We have the first tests
+passing for local file synchronization, but the code is still subject to major
+changes and there is some work to be done before this is useful for productive
+use.
 
 If you want to play around with it and possibly contribute, check it out and
-I'll be happy to assist, but do not use it on your files without making a
-backup first.
+I'll be happy to assist, but under no circumstances use it on your files
+without making a backup first.
 
 
 ## How does this compare to git-annex/unison/...?
@@ -71,5 +79,9 @@ in case of conflicts.  In contrast to Unison, Harmony does not yet have a GUI
 but only a command line interface. Unison however is geared towards
 point-to-point synchronization and can not provide a consistent repository
 view if files are scattered across multiple locations.
+
+## Further Reading
+
+[Harmony Concepts](/docs/concepts.md)
 
 

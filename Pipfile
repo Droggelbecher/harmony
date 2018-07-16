@@ -5,6 +5,7 @@ name = "pypi"
 
 [packages]
 PyYAML = ">=3.12"
+grip = "*"
 
 [dev-packages]
 pytest = "*"
