@@ -52,7 +52,7 @@ class Clock(Serializable):
     def update(self, other):
         """
         Update based on other clock instance.
-        Return a new clock instance with values being the maximum of self and other.
+        Update with values being the maximum of self and other.
         """
         for k in set(self.values.keys()) | set(other.values.keys()):
             self.values[k] = max(
@@ -67,16 +67,16 @@ class Clock(Serializable):
         return self.compare(other) is not None
 
     def __lt__(self, other):
-        return self.compare(other) == -1
+        return self.compare(other) < 0
 
     def __eq__(self, other):
         return self.compare(other) == 0
 
     def __gt__(self, other):
-        return other < self
+        return self.compare(other) > 0
 
     def __le__(self, other):
-        return (self < other) or (self == other)
+        return self.compare(other) <= 0
 
     def __ge__(self, other):
-        return (self > other) or (self == other)
+        return self.compare(other) >= 0

@@ -1,12 +1,11 @@
 
-import os.path
 import shutil
-import glob
 import logging
 from pathlib import Path
 import re
 from collections import namedtuple
 import tempfile
+from typing import Union, Iterable, Dict
 
 from paramiko import SSHClient, AutoAddPolicy
 from scp import SCPClient
@@ -28,21 +27,68 @@ class ProtocolMeta(type):
 
 class Protocol(metaclass = ProtocolMeta):
 
-    __slots__ = (
-        'location'
-        )
+    URI = Union[str, Path]
 
-    def __init__(self, uri):
+    def __init__(self, uri: URI) -> None:
         self.address = self.parse_uri(uri)
 
     @classmethod
-    def connect(class_, uri):
-        assert isinstance(uri, str) or isinstance(uri, Path)
+    def parse_uri(self, uri: URI) -> str:
+        """
+        Given a URI that is assumed to be valid for this protocol, return a
+        normalized version for internal use.  Two URIs pointing to the same
+        thing should lead (if possible) to the same return value.
+
+        Derived classes must implement this.
+        """
+        raise NotImplementedError
+
+    @classmethod
+    def connect(class_, uri: URI):
+        assert isinstance(uri, (str, Path))
         uri = str(uri)
-        for protocol in sorted(class_.registry.values(), key = lambda x: x.priority):
+        for protocol in sorted(class_.registry.values(), key=lambda x: x.priority):
             if protocol.is_valid(uri):
                 return protocol(uri)
         return None
+
+    def __enter__(self):
+        """
+        Open the connection.
+        Must be implemented by derived class.
+        """
+        raise NotImplementedError
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """
+        Close the connection.
+        Must be implemented by derived class.
+        """
+        raise NotImplementedError
+
+    def pull_harmony_files(self, paths: Iterable[Path]) -> Dict[Path, Path]:
+        """
+        Shall only be executed on a currently open connection.  Given an
+        iterable of paths relative to the harmony working directory, download
+        the pointed to files to some local storage.
+
+        The protocol is responsible for cleaning up these files
+        (eg. during __exit__).
+
+        Return a dict mapping requested relative path to path of stored file.
+
+        Must be implemented by derived class.
+        """
+        raise NotImplementedError
+
+    def pull_working_directory_files(self, paths: Iterable[Path], working_directory: Path) \
+        -> Dict[Path, Path]:
+        """
+        Given a list of paths relative to the working directory
+        and a local working directory path, download the requested files
+        to the local working directory (with same relative paths).
+        """
+        raise NotImplementedError
 
 class FileProtocol(Protocol):
 
@@ -57,7 +103,7 @@ class FileProtocol(Protocol):
         return address.is_dir()
 
     @classmethod
-    def parse_uri(_, uri):
+    def parse_uri(class_, uri):
         """
         Return a normalized version of the passed location,
         assuming this location is a valid location for this protocol.
@@ -81,7 +127,6 @@ class FileProtocol(Protocol):
         working_directory = Path(working_directory)
         for path in paths:
             shutil.copyfile(str(self.address / path), str(working_directory / path))
-        return {p: working_directory / p for p in paths}
 
 
 
@@ -103,10 +148,10 @@ class ScpProtocol(Protocol):
 
         d = m.groupdict()
         return class_.Address(
-            user = d['user'],
-            password = d['cpasswd'][1:] if d['cpasswd'] is not None else None,
-            host = d['host'],
-            path = d['path'][1:] if d['path'] is not None else None,
+            user=d['user'],
+            password=d['cpasswd'][1:] if d['cpasswd'] is not None else None,
+            host=d['host'],
+            path=d['path'][1:] if d['path'] is not None else None,
             )
 
     def abspath(self, p):
@@ -118,24 +163,24 @@ class ScpProtocol(Protocol):
         super().__init__(uri)
         if self.address is None:
             raise ValueError('Could not interpret "{}" as an SSH address.'.format(uri))
+        self.scp = None
+        self.tempdir = None
 
     def __enter__(self):
-        self.ssh = SSHClient()
-        self.ssh.load_system_host_keys()
-        self.ssh.set_missing_host_key_policy(AutoAddPolicy())
-        self.ssh.connect(self.address.host)
-        self.scp = SCPClient(self.ssh.get_transport()).__enter__()
+        ssh = SSHClient()
+        ssh.load_system_host_keys()
+        ssh.set_missing_host_key_policy(AutoAddPolicy())
+        ssh.connect(self.address.host)
+        self.scp = SCPClient(ssh.get_transport()).__enter__()
         self.tempdir = None
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.scp.__exit__(exc_type, exc_value, traceback)
+        self.scp = None
         if self.tempdir is not None:
             self.tempdir.__exit__(exc_type, exc_value, traceback)
 
-    # TODO: TBD: join into one function w/ working_directory optional?
-    #       Implementation is after all relatively similiar in general...
-    #       Also the names don't reflect the behavior well: pull_temporary / pull_permanently would be better
     def pull_harmony_files(self, paths):
         r = {}
         self.tempdir = tempfile.TemporaryDirectory()
@@ -145,22 +190,17 @@ class ScpProtocol(Protocol):
             logger.debug('scp({}, {})'.format(
                 self.abspath(p), str(r[p])
                 ))
-            r[p].parent.mkdir(parents = True, exist_ok = True)
+            r[p].parent.mkdir(parents=True, exist_ok=True)
             self.scp.get(self.abspath(p), str(r[p]))
         return r
 
     def pull_working_files(self, paths, working_directory):
-        r = {}
         for p in paths:
             source = self.abspath(p)
             destination = working_directory / p
             self.scp.get(source, str(destination))
-            r[source] = destination
-        return r
 
 
-
-        
 
 connect = Protocol.connect
 

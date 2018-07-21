@@ -8,6 +8,10 @@ class Remotes(FileSerializable):
     RELATIVE_PATH = 'remotes'
 
     class Remote(Serializable):
+        """
+        Represents a remote Location.
+        """
+
         def __init__(self, id_ = None, name = None, location = None):
             self.id = id_
             self.name = name

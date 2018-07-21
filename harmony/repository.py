@@ -4,7 +4,6 @@ from pathlib import Path
 import socket
 import logging
 import uuid
-from collections import defaultdict
 
 from harmony import protocols
 from harmony import serialization
@@ -28,7 +27,7 @@ class Repository:
     #
 
     @classmethod
-    def init(class_, working_directory, name = None):
+    def init(class_, working_directory, name=None):
         """
         Create fresh repository in given working dir.
 
