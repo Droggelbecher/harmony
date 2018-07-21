@@ -2,9 +2,11 @@
 import os
 import logging
 from pathlib import Path
+from typing import Iterable, Optional
 
 from harmony import hashers
 from harmony.serialization import Serializable
+from harmony.ruleset import Ruleset
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +39,21 @@ class FileState(Serializable):
         return self.size != other.size or self.digest != other.digest
 
 class WorkingDirectory:
+    """
+    This class provides access to operations on the actual
+    files in the working directory.
+    """
 
-    def __init__(self, path, ruleset):
-        self.path = Path(path).resolve()
+    def __init__(self, path: Path, ruleset: Ruleset) -> None:
+        self.path = path.resolve()
         self.ruleset = ruleset
 
-    def normalize(self, relpath):
+    def normalize(self, relpath: Path) -> Path:
+        """
+        Given a relative path into this working directory, return a normalized
+        version of the path (also relative to this WD, but eg. free from
+        symlinks).
+        """
         abspath = (self.path / relpath)
         try:
             abspath = abspath.resolve()
@@ -50,16 +61,23 @@ class WorkingDirectory:
             pass
         return abspath.relative_to(self.path)
 
-    def get_filenames(self):
+    def get_filenames(self) -> Iterable[Path]:
+        """
+        Return normalized names of all committable (according to ruleset) files
+        in this WD.
+        """
         r = set()
         for file_info in self.ruleset.iterate_committable_files(self.path):
             r.add(self.normalize(file_info.relative_filename))
         return r
 
-    def __contains__(self, path):
+    def __contains__(self, path: Path) -> bool:
+        """
+        True iff the given relative path refers to an existing file in this WD.
+        """
         return (self.path / self.normalize(path)).exists()
 
-    def file_maybe_modified(self, file_state):
+    def file_maybe_modified(self, file_state: FileState) -> bool:
         """
         Return True if the file $file_info.path suggests that it might have
         been modified since file_info was generated.
@@ -93,19 +111,28 @@ class WorkingDirectory:
         size = path.stat().st_size
 
         if file_state.mtime > mtime:
-            logger.warn('Clock screwup: Memorized modification time of {} is more recent than actual.'.format(
-                file_state.path
-            ))
+            logger.warning(
+                f'Clock screwup: '
+                f'Memorized modification time of {file_state.path} is more recent than actual.'
+            )
             # Default to treating the file as modified (always a safe choice in
             # terms of consistency, might just mean unnecessary scanning work).
             return True
 
         return mtime > file_state.mtime or size != file_state.size
 
-    def generate_file_state(self, path):
+    def scan_file(self, path: Path) -> FileState:
+        """
+        Scan the file refered to by the relative path $path
+        and return a FileState instance describing it.
+        """
         hasher = hashers.get_hasher('default')
         full_path = self.path / path
         exists = full_path.exists()
+
+        mtime: Optional[float]
+        size: Optional[int]
+        digest: Optional[str]
 
         if exists:
             mtime = full_path.stat().st_mtime
@@ -117,10 +144,10 @@ class WorkingDirectory:
             mtime = size = digest = None
 
         r = FileState(
-            path = self.normalize(path),
-            mtime = mtime,
-            size = size,
-            digest = digest,
+            path=self.normalize(path),
+            mtime=mtime,
+            size=size,
+            digest=digest,
         )
         return r
 

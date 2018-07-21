@@ -8,6 +8,10 @@ from harmony import serialization
 from harmony.serialization import FileSerializable
 
 class Ruleset(FileSerializable):
+    """
+    A set of rules defining what files the working directory
+    should be considered for scanning & synchronization.
+    """
 
     RELATIVE_PATH = 'rules'
     _state = (

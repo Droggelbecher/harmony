@@ -78,11 +78,11 @@ def test_generate_file_state_normalized():
         wd = WorkingDirectory(d, ruleset_all(d))
 
         for fn in real_filenames:
-            state = wd.generate_file_state(fn)
+            state = wd.scan_file(fn)
             assert Path(state.path) == Path(fn)
 
         for fn, real_fn in symlinks.items():
-            state = wd.generate_file_state(fn)
+            state = wd.scan_file(fn)
             assert Path(state.path) == Path(real_fn)
 
 

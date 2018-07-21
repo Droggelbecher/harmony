@@ -1,20 +1,4 @@
 #!/usr/bin/env python3
-
-import sys
-
-import os
-import pytest
-import logging
-from pathlib import Path
-
-from tests.utils import *
-from harmony.repository import Repository
-
-LOCATION_STATE_DIR = 'location_states'
-
-logger = logging.getLogger(__name__)
-
-
 """
 Tests the high-level functions of the Repository class.
 This actually tests almost end-to-end (starting just below where a command
@@ -26,6 +10,18 @@ of file system related functions/tools such as TempDir(), assertFileExists(),
 etc... (see test.utils for most of the implementations)
 """
 
+import logging
+from pathlib import Path
+import pytest
+
+from tests.utils import *
+from harmony.repository import Repository
+
+LOCATION_STATE_DIR = 'location_states'
+
+logger = logging.getLogger(__name__)
+
+
 d_harmony = Repository.HARMONY_SUBDIR
 
 @pytest.fixture(autouse = True)
@@ -36,7 +32,6 @@ def test_find_workdir_here():
     with TempDir() as d:
         r = Repository.init(d)
         assert r.find_working_directory_here(d / d_harmony) == d
-
 
 def test_init_creates_harmony_dir():
     with TempDir() as d:

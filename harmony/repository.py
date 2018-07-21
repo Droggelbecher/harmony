@@ -1,33 +1,55 @@
 
+"""
+API entry points for Harmony.
+Use these to work with Harmony programmatically.
+"""
+
 import os
 from pathlib import Path
 import socket
 import logging
 import uuid
+from typing import Optional
 
 from harmony import protocols
 from harmony import serialization
 from harmony import file_state_logic
 from harmony.location_states import LocationStates
-from harmony.repository_state import RepositoryState, RepositoryStateException
+from harmony.repository_state import RepositoryState
 from harmony.remotes import Remotes
 from harmony.ruleset import Ruleset
 from harmony.working_directory import WorkingDirectory
-from harmony.util import shortened_id
+from harmony.util import shortened_id, has_suffix
 
 logger = logging.getLogger(__name__)
 
 class Repository:
+    """
+    Main Harmony API entry point.
+    Represents all the functionality and data available from a local Location.
+    That is:
+    - Management of (locally known) remotes
+    - Initializing & Cloning locations (including repo state, etc..)
+    - Pulling files & states from remote locations
+    """
 
     HARMONY_SUBDIR = Path('.harmony')
     REPOSITORY_FILE = Path('config')
+
+    location_states: LocationStates
+    repository_state: RepositoryState
+    ruleset: Ruleset
+    remotes: Remotes
+    working_directory = None 
+    id: str
+    name: Optional[str]
 
     #
     # Factory classmethods (returning Repository instances)
     #
 
     @classmethod
-    def init(class_, working_directory, name=None):
+    def init(class_, working_directory: Path, name: Optional[str] = None) -> 'Repository':
         """
         Create fresh repository in given working dir.
 
@@ -59,16 +81,16 @@ class Repository:
         repo.name = name
 
         logging.info('Initialized repository')
-        logging.info('  ID  : {} ({})'.format(shortened_id(repo.id), repo.id))
-        logging.info('  Name: {}'.format(repo.name))
-        logging.info('  WD  : {}'.format(repo.working_directory.path))
+        logging.info(f'  ID  : {repo.short_id} ({repo.id})')
+        logging.info(f'  Name: {repo.name}')
+        logging.info(f'  WD  : {repo.working_directory.path}')
 
         repo.save()
 
         return repo
 
     @classmethod
-    def find(class_, working_directory):
+    def find(class_, working_directory: Path) -> 'Repository':
         """
         Find repository configuration data in a parent dir of given working
         dir and create repository instance for it.
@@ -80,14 +102,14 @@ class Repository:
         return class_.load(harmony_directory)
 
     @classmethod
-    def load(class_, harmony_directory):
+    def load(class_, harmony_directory: Path) -> 'Repository':
         """
         @return Repository instance for repo in working_directory.
         """
         harmony_directory = Path(harmony_directory)
 
         working_directory = class_.find_working_directory_here(harmony_directory)
-        repo = class_(working_directory, harmony_directory)
+        repo = class_(working_directory, harmony_directory) # type: ignore
 
         # TODO: implement a Configuration class so we can use
         # Configuration.load(...) here
@@ -108,16 +130,19 @@ class Repository:
         repo.working_directory = WorkingDirectory(working_directory, repo.ruleset)
 
         logging.info('Loaded repository')
-        logging.info('  ID  : {} ({})'.format(shortened_id(repo.id), repo.id))
-        logging.info('  Name: {}'.format(repo.name))
-        logging.info('  WD  : {}'.format(repo.working_directory.path))
+        logging.info(f'  ID  : {repo.short_id} ({repo.id})')
+        logging.info(f'  Name: {repo.name}')
+        logging.info(f'  WD  : {repo.working_directory.path}')
 
         return repo
 
     @classmethod
-    def clone(class_, working_directory, location, name = None):
-        working_directory = Path(working_directory)
-    
+    def clone(class_, working_directory: Path, location: str, name: Optional[str] = None) \
+                -> 'Repository':
+        """
+        Clone a repository from $location into $working_directory.
+        """
+
         # Create empty repo $r in target location
         target_repo = class_.init(working_directory, name)
         config_path = class_.HARMONY_SUBDIR / class_.REPOSITORY_FILE
@@ -129,9 +154,9 @@ class Repository:
 
         # Add source repo as remote
         target_repo.remotes.add(
-            location = location,
-            id_ = source_config['id'],
-            name = source_config['name']
+            location=location,
+            id_=source_config['id'],
+            name=source_config['name']
         )
 
         # Pull
@@ -145,21 +170,31 @@ class Repository:
     #
 
     @classmethod
-    def generate_name(class_, working_directory):
-        working_directory = Path(working_directory)
+    def generate_name(class_, working_directory: Path) -> str:
+        """
+        Generate a suitable name for a new repository in the given $working_directory
+        """
         return '{}-{}'.format(socket.gethostname(), working_directory.name)
 
     @classmethod
-    def find_harmony_directory_here(class_, working_directory):
-        working_directory = Path(working_directory)
-        if Path(working_directory.name) == Path(class_.HARMONY_SUBDIR):
-            return working_directory
-        return working_directory / class_.HARMONY_SUBDIR
+    def find_harmony_directory_here(class_, directory: Path) -> Path:
+        """
+        Given a working directory path or harmony directory path,
+        return the harmony directory path of the according location.
+        (I.e. $directory or $directory / .harmony)
+        """
+        if has_suffix(directory, class_.HARMONY_SUBDIR):
+            return directory
+        return directory / class_.HARMONY_SUBDIR
 
     @classmethod
-    def find_harmony_directory(class_, working_directory):
-        working_directory = Path(working_directory)
-        search_start = working_directory
+    def find_harmony_directory(class_, directory: Path) -> Path:
+        """
+        Given a path to a directory that is a subpath of a locations working directory,
+        find the harmony directory of the according location.
+        """
+
+        search_start = directory
 
         # Traverse directories upwards until a '.harmony' subdir is
         # encountered.
@@ -167,25 +202,29 @@ class Repository:
         # directory anymore (shouldnt happen in a sane filesystem)
 
         harmony_dir = None
-        working_directory = working_directory.resolve()
-        while working_directory.is_dir() and not os.path.ismount(str(working_directory)):
-            d = working_directory / class_.HARMONY_SUBDIR
+        directory = directory.resolve()
+        while directory.is_dir() and not os.path.ismount(str(directory)):
+            d = directory / class_.HARMONY_SUBDIR
             if d.is_dir():
                 harmony_dir = d
                 break
-            working_directory = working_directory.parent.resolve()
+            directory = directory.parent.resolve()
 
         if harmony_dir is None:
             raise FileNotFoundError('No harmony repository found in "{}".  Search stopped in "{}"'.format(
-                search_start, working_directory))
+                search_start, directory))
         return harmony_dir
 
     @classmethod
-    def find_working_directory_here(class_, working_directory):
-        r = working_directory
-        if Path(working_directory).name == str(class_.HARMONY_SUBDIR):
-            r = working_directory.parent.resolve()
-        return r
+    def find_working_directory_here(class_, directory: Path) -> Path:
+        """
+        Given a working directory path or harmony directory path,
+        return the working directory path of the according location
+        (i.e. $directory or $directory/..)
+        """
+        if has_suffix(directory, class_.HARMONY_SUBDIR):
+            return directory.parent.resolve()
+        return directory
 
 
     # =======================================================
@@ -194,7 +233,7 @@ class Repository:
     #
     # =======================================================
 
-    def __init__(self, working_directory, harmony_directory = None):
+    def __init__(self, working_directory: Path, harmony_directory: Optional[Path] = None) -> None:
         """
         This constructor alone is not sufficient to create a usable Repository
         instance, use Repository.init or Repository.load.
@@ -214,6 +253,9 @@ class Repository:
         return shortened_id(self.id)
 
     def save(self):
+        """
+        Save all (location, repository, remotes, ruleset) state to disk.
+        """
         self.location_states.save()
         self.repository_state.save()
         self.remotes.save()

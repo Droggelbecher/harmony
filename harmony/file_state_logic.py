@@ -64,7 +64,7 @@ def commit(local_location_id, working_directory, location_states, repository_sta
     # Do all the file scanning before so we can be sure to do it at most
     # once per file in the WD
     wd_states = {
-        path: working_directory.generate_file_state(path)
+        path: working_directory.scan_file(path)
         for path in paths
         if working_directory.file_maybe_modified(
             location_states.get_file_state(id_, path)
@@ -76,57 +76,57 @@ def commit(local_location_id, working_directory, location_states, repository_sta
         for path in paths
     }
 
-
     any_change = False
     for path in paths:
+        if path not in wd_states:
+            logger.debug('{} not in workdir: {}'.format(short_id, path))
+            continue
 
-        if path in wd_states:
-            file_state = location_state_cache[path]
-            new_file_state = wd_states[path]
-            changed = location_states.update_file_state(id_, new_file_state)
-            if changed:
-                any_change = True
+        file_state = location_state_cache[path]
+        new_file_state = wd_states[path]
+        changed = location_states.update_file_state(id_, new_file_state)
+        if not changed:
+            logger.debug('{} not actually changed: {}'.format(short_id, path))
+            continue
 
-                # If the file vanished but a new one with the same digest
-                # popped up, consider that a rename.
-                # Rename means, the old file is WIPEd (instead of just
-                # locally removed) and the new file is added as usual
-                if not new_file_state.exists():
-                    logger.debug('{} vanished'.format(new_file_state.path))
+        any_change = True
 
-                    # Iterate over paths to find a possible rename target
-                    for path2 in paths:
-                        # Rename to itself does not make sense
-                        # Rename to a file that has not changed (or better: just appeared) does not make sense
-                        if path2 == path or path2 not in wd_states:
-                            continue
+        # If the file vanished but a new one with the same digest
+        # popped up, consider that a rename.
+        # Rename means, the old file is WIPEd (instead of just
+        # locally removed) and the new file is added as usual
+        if not new_file_state.exists():
+            logger.debug('{} vanished'.format(new_file_state.path))
 
-                        path2_state = location_state_cache[path2]
-                        new_path2_state = wd_states[path2]
-                        logger.debug('{} rename candidate {} ex before={} ex now={} self.digest={} candidate.digest={}'.format(
-                            path, path2, path2_state.exists(),
-                            new_path2_state.exists(),
-                            file_state.digest, new_path2_state.digest
-                        ))
+            # Iterate over paths to find a possible rename target
+            for path2 in paths:
+                # Rename to itself does not make sense
+                # Rename to a file that has not changed (or better: just appeared) does not make sense
+                if path2 == path or path2 not in wd_states:
+                    continue
 
-                        if not path2_state.exists() \
-                           and new_path2_state.exists() \
-                           and new_path2_state.digest == file_state.digest:
-                            logger.info('Detected rename: {} -> {}'.format(path, path2))
-                            new_file_state.wipe = True
-                            new_file_state.digest = file_state.digest
-                            break
+                path2_state = location_state_cache[path2]
+                new_path2_state = wd_states[path2]
+                logger.debug('{} rename candidate {} ex before={} ex now={} self.digest={} candidate.digest={}'.format(
+                    path, path2, path2_state.exists(),
+                    new_path2_state.exists(),
+                    file_state.digest, new_path2_state.digest
+                ))
 
-                repository_state.update_file_state(
-                    new_file_state,
-                    id_,
-                    location_states.get_clock(id_) + 1,
-                )
-                logger.debug('{} committed: {} clk={}'.format(short_id, new_file_state.path, location_states.get_clock(id_) + 1))
-            else:
-                logger.debug('{} not actually changed: {}'.format(short_id, path))
-        else:
-            logger.debug('{} not changed: {}'.format(short_id, path))
+                if not path2_state.exists() \
+                   and new_path2_state.exists() \
+                   and new_path2_state.digest == file_state.digest:
+                    logger.info('Detected rename: {} -> {}'.format(path, path2))
+                    new_file_state.wipe = True
+                    new_file_state.digest = file_state.digest
+                    break
+
+        repository_state.update_file_state(
+            new_file_state,
+            id_,
+            location_states.get_clock(id_) + 1,
+        )
+        logger.debug('{} committed: {} clk={}'.format(short_id, new_file_state.path, location_states.get_clock(id_) + 1))
 
     return any_change
 
