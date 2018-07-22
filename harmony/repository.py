@@ -9,13 +9,13 @@ from pathlib import Path
 import socket
 import logging
 import uuid
-from typing import Optional
+from typing import Optional, Dict, Tuple
 
 from harmony import protocols
 from harmony import serialization
 from harmony import file_state_logic
 from harmony.location_states import LocationStates
-from harmony.repository_state import RepositoryState
+from harmony.repository_state import RepositoryState, RepositoryFileState
 from harmony.remotes import Remotes
 from harmony.ruleset import Ruleset
 from harmony.working_directory import WorkingDirectory
@@ -40,7 +40,7 @@ class Repository:
     repository_state: RepositoryState
     ruleset: Ruleset
     remotes: Remotes
-    working_directory = None 
+    working_directory: WorkingDirectory
     id: str
     name: Optional[str]
 
@@ -117,7 +117,6 @@ class Repository:
 
         repo.id = repo_config['id']
         repo.name = repo_config['name']
-
         def load_component(class_):
             return class_.load(
                 class_.get_path(repo.harmony_directory)
@@ -211,8 +210,9 @@ class Repository:
             directory = directory.parent.resolve()
 
         if harmony_dir is None:
-            raise FileNotFoundError('No harmony repository found in "{}".  Search stopped in "{}"'.format(
-                search_start, directory))
+            raise FileNotFoundError(
+                f'No harmony repository found in "{search_start}". Search stopped in "{directory}"'
+            )
         return harmony_dir
 
     @classmethod
@@ -262,17 +262,21 @@ class Repository:
         self.ruleset.save()
 
         d = {
-                'id': self.id,
-                'name': self.name,
-                }
+            'id': self.id,
+            'name': self.name,
+        }
         serialization.write(d, self.harmony_directory / Repository.REPOSITORY_FILE)
 
     #
     # Actual repository operations
     #
 
-    def commit(self):
-        logger.debug('{} committing...'.format(self.short_id))
+    def commit(self) -> bool:
+        """
+        Scan file states and commit to location state and repository state.
+        Return True iff the commit denotes an actual change.
+        """
+        logger.debug(f'{self.short_id} committing...')
         any_change = file_state_logic.commit(
             self.id,
             self.working_directory,
@@ -282,20 +286,29 @@ class Repository:
 
         self.location_states.save()
         self.repository_state.save()
-        logger.debug('{} committed. Changes seen: {}'.format(self.short_id, any_change))
+        logger.debug(f'{self.short_id} committed. Changes seen: {any_change}')
         return any_change
 
-    def pull_state(self, remote_spec):
-        logger.debug('{} pull from {}'.format(self.short_id, remote_spec))
+    def pull_state(self, remote_spec: str) \
+        -> Dict[
+                Path,
+                Tuple[RepositoryFileState, RepositoryFileState]
+        ]:
+        """
+        Pull state from remote location $remote_spec.
+        Return a dictionary about all encountered conflicts of form
+        {path: (local file state, remote file state), ...}
+        """
+        logger.debug('{self.short_id} pull from {remote_spec}')
         remote_repository_state = self.fetch(remote_spec)
         conflicts, new_repository_state = file_state_logic.merge(
-            local_state = self.repository_state,
-            remote_state = remote_repository_state,
-            merger_id = self.id
+            local_state=self.repository_state,
+            remote_state=remote_repository_state,
+            merger_id=self.id
         )
 
-        logger.debug('conflicts={}'.format(list(conflicts.keys())))
-        if not len(conflicts):
+        logger.debug(f'conflicts={list(conflicts.keys())}')
+        if not conflicts:
             logger.debug('auto-merging')
             self.repository_state.overwrite(new_repository_state)
             self.repository_state.save()
@@ -360,51 +373,65 @@ class Repository:
     def get_remotes(self):
         return self.remotes.get_remotes()
 
-    def get_file_stats(self):
+
+    class FileStatus:
+        """
+        Status of a file that is in the local working directory or the abstract
+        repository (or both)
+        """
+        path: Path
+        exists_in_repository: bool
+        maybe_modified: bool
+        exists_in_workdir: bool
+        exists_in_location_state: bool
+        is_most_recent: bool
+
+        def __init__(self, **kws):
+            self.__dict__.update(kws)
+
+        def __repr__(self):
+            return 'St(' + ' '.join(
+                f'{k}={v}' for k, v in
+                self.__dict__.items()
+            ) + ')'
+
+    def get_file_stats(self) -> 'Dict[Path, Repository.FileStatus]':
         """
         Return a list of FileStatus() objects describing the status
         of all files in the repository.
         """
-
-        class FileStatus:
-            def __init__(self, **kws):
-                self.__dict__.update(kws)
-
-            def __repr__(self):
-                return 'St(' + ' '.join(
-                    f'{k}={v}' for k, v in
-                    self.__dict__.items()
-                ) + ')'
-
         files = self.repository_state.get_paths()
         logger.debug(f'files in repo: {files}')
 
-        stats = []
+        stats = {}
         for path in files:
             re = self.repository_state.get(path)
             assert re is not None
             le = self.location_states.get_file_state(self.id, path)
 
-            f = FileStatus(
-                path = path,
-                exists_in_repository = True,
-                maybe_modified = self.working_directory.file_maybe_modified(le),
-                exists_in_workdir = path in self.working_directory,
-                exists_in_location_state = le.exists(),
-                is_most_recent = not le.exists() or le.digest == re.digest,
+            f = Repository.FileStatus(
+                path=path,
+                exists_in_repository=True,
+                maybe_modified=self.working_directory.file_maybe_modified(le),
+                exists_in_workdir=(path in self.working_directory),
+                exists_in_location_state=le.exists(),
+                is_most_recent=(not le.exists() or le.digest == re.digest),
                 )
-            stats.append(f)
+            stats[path] = f
 
         logger.debug(f'wd files: {self.working_directory.get_filenames()}')
         wd_only_files = set(self.working_directory.get_filenames()) - set(files)
         logger.debug(f'wd only files: {wd_only_files}')
         for path in wd_only_files:
-            f = FileStatus(
-                path = path,
-                exists_in_repository = False,
-                is_most_recent = True,
+            f = Repository.FileStatus(
+                path=path,
+                exists_in_repository=False,
+                maybe_modified=True,
+                exists_in_workdir=True,
+                exists_in_location_state=False,
+                is_most_recent=True,
                 )
-            stats.append(f)
+            stats[path] = f
 
         return stats
 

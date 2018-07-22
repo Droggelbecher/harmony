@@ -1,14 +1,21 @@
 
 import logging
-import os
 from copy import deepcopy
+from typing import Dict, Tuple
+from pathlib import Path
 
 from harmony.util import shortened_id
-from harmony.repository_state import RepositoryState
+from harmony.repository_state import RepositoryState, RepositoryFileState
+from harmony.location_states import LocationStates
+from harmony.working_directory import WorkingDirectory
 
 logger = logging.getLogger(__name__)
 
-def commit(local_location_id, working_directory, location_states, repository_state):
+def commit(
+        local_location_id: str,
+        working_directory: WorkingDirectory,
+        location_states: LocationStates,
+        repository_state: RepositoryState):
     """
     Scan the given working directory for changes and commit them to local
     state storage.
@@ -79,14 +86,14 @@ def commit(local_location_id, working_directory, location_states, repository_sta
     any_change = False
     for path in paths:
         if path not in wd_states:
-            logger.debug('{} not in workdir: {}'.format(short_id, path))
+            logger.debug(f'{short_id} not in workdir: {path}')
             continue
 
         file_state = location_state_cache[path]
         new_file_state = wd_states[path]
         changed = location_states.update_file_state(id_, new_file_state)
         if not changed:
-            logger.debug('{} not actually changed: {}'.format(short_id, path))
+            logger.debug(f'{short_id} not actually changed: {path}')
             continue
 
         any_change = True
@@ -96,27 +103,32 @@ def commit(local_location_id, working_directory, location_states, repository_sta
         # Rename means, the old file is WIPEd (instead of just
         # locally removed) and the new file is added as usual
         if not new_file_state.exists():
-            logger.debug('{} vanished'.format(new_file_state.path))
+            logger.debug(f'{new_file_state} vanished')
+
+            # TODO: extract this into a seperate function
 
             # Iterate over paths to find a possible rename target
             for path2 in paths:
                 # Rename to itself does not make sense
-                # Rename to a file that has not changed (or better: just appeared) does not make sense
+                # Rename to a file that has not changed (or better: just appeared)
+                # does not make sense
                 if path2 == path or path2 not in wd_states:
                     continue
 
                 path2_state = location_state_cache[path2]
                 new_path2_state = wd_states[path2]
-                logger.debug('{} rename candidate {} ex before={} ex now={} self.digest={} candidate.digest={}'.format(
-                    path, path2, path2_state.exists(),
-                    new_path2_state.exists(),
-                    file_state.digest, new_path2_state.digest
-                ))
+                logger.debug(
+                    f'{path} rename candidate {path2} '
+                    f'ex before={path2_state.exists()} '
+                    f'ex now={new_path2_state.exists()} '
+                    f'self.digest={file_state.digest} '
+                    f'candidate.digest={new_path2_state.digest}'
+                )
 
                 if not path2_state.exists() \
                    and new_path2_state.exists() \
                    and new_path2_state.digest == file_state.digest:
-                    logger.info('Detected rename: {} -> {}'.format(path, path2))
+                    logger.info(f'Detected rename: {path} -> {path2}')
                     new_file_state.wipe = True
                     new_file_state.digest = file_state.digest
                     break
@@ -126,12 +138,18 @@ def commit(local_location_id, working_directory, location_states, repository_sta
             id_,
             location_states.get_clock(id_) + 1,
         )
-        logger.debug('{} committed: {} clk={}'.format(short_id, new_file_state.path, location_states.get_clock(id_) + 1))
+        logger.debug(
+            f'{short_id} committed: {new_file_state.path} clk={location_states.get_clock(id_) + 1}'
+        )
 
     return any_change
 
 
-def merge(local_state, remote_state, merger_id):
+def merge(local_state: RepositoryState, remote_state: RepositoryState, merger_id: str) \
+-> Tuple[
+        Dict[Path, Tuple[RepositoryFileState, RepositoryFileState]],
+        RepositoryState
+]:
     """
     Merge two repository states ('local' and 'remote') into a common state if
     possible, auto-detecting if a change only happened on one side and
@@ -150,10 +168,10 @@ def merge(local_state, remote_state, merger_id):
         A pair (conflicts, merged).
         $conflicts is a dictonary of the form { path: (local_entry, remote_entry),
         ... } whereas $path denotes the path of a file in conflict and $local_entry
-        and $remote_entry refer to the RepositoryState.Entry instances for that
-        file that are in conflict. 
+        and $remote_entry refer to the RepositoryFileState instances for that
+        file that are in conflict.
         $merged is a newly created RepositoryState instance with selected merged
-        repository states. 
+        repository states.
         If $conflicts is empty, $merged covers all files present either locally or
         remotely.
     """
@@ -181,33 +199,28 @@ def merge(local_state, remote_state, merger_id):
         c = local.clock.compare(remote.clock)
         if c is None:
             if local.contents_different(remote):
-                logger.debug('merge: {} in conflict: {} <-> {}'.format(
-                    path, local.clock, remote.clock
-                ))
+                logger.debug(f'merge: {path} in conflict: {local.clock} <-> {remote.clock}')
                 conflicts[path] = (local, remote)
             else:
-                logger.debug('merge: {} automerged (same content)'.format(path))
+                logger.debug(f'merge: {path} automerged (same content)')
                 m = deepcopy(local)
                 m.clock.update(remote.clock)
                 m.clock.increase(merger_id)
                 merged[path] = m
 
         elif c < 0:
-            logger.debug('merge: {} newer on remote'.format(path))
+            logger.debug(f'merge: {path} newer on remote')
             merged[path] = remote
 
         else: # c >= 0:
-            logger.debug('merge: {} same version or newer on local'.format(path))
+            logger.debug('merge: {path} same version or newer on local')
             merged[path] = local
 
     return conflicts, merged
 
 
 
-def auto_rename(working_directory, repository_state):
-    from harmony.working_directory import WorkingDirectory
-
-    assert isinstance(working_directory, WorkingDirectory)
+def auto_rename(working_directory: WorkingDirectory, repository_state: RepositoryState) -> None:
     """
     Apply automatic renaming in the given working_directory.
     That is, if working dir contains files that are WIPEd in $repository_state but
@@ -229,19 +242,19 @@ def auto_rename(working_directory, repository_state):
     # 4. Rename $A to $B
 
     for path, entry in repository_state.files.items():
-        logger.debug('auto_rename: {}: path={} wipe={} in_wd={}'.format(path, entry.path, entry.wipe, (entry.path in working_directory)))
+        logger.debug(
+            f'auto_rename: {path}: path={entry.path} wipe={entry.wipe} '
+            f'in_wd={entry.path in working_directory}'
+        )
         if entry.wipe and (entry.path in working_directory):
             possible_targets = {
                 e.path for e in repository_state.files.values()
                 if e.path != path and e.digest == entry.digest and not e.wipe
             }
             logger.info(
-                '{} could be auto-renamed to any of {}'.format(
-                    path, possible_targets
-                )
+                f'{path} could be auto-renamed to any of {possible_targets}'
             )
             if possible_targets:
-                (working_directory.path / path).rename(working_directory.path / possible_targets.pop())
-
-
-
+                (working_directory.path / path).rename(
+                    working_directory.path / possible_targets.pop()
+                )

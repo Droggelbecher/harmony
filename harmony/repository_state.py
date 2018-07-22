@@ -21,7 +21,8 @@ class RepositoryFileState(Serializable):
     states of a file from the point of view of the whole repository,
     that is, (amongst other things), its digest and clock.  It does
     specifically not contain any information about availability on
-    remotes, which is handled by working_directory.FileState.
+    particular locations or its state in the filesystem at those,
+    which is handled by working_directory.FileState.
     """
 
     def __init__(self, path = None, digest = None, clock = Clock(), wipe = False):

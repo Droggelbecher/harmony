@@ -24,9 +24,13 @@ logger = logging.getLogger(__name__)
 
 d_harmony = Repository.HARMONY_SUBDIR
 
-@pytest.fixture(autouse = True)
+@pytest.fixture(autouse=True)
 def setup():
-    logging.basicConfig(level = logging.DEBUG, format = '{levelname:7s} {module:15s}:{funcName:15s} | {message:s}', style = '{')
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='{levelname:7s} {module:15s}:{funcName:15s} | {message:s}',
+        style='{'
+    )
 
 def test_find_workdir_here():
     with TempDir() as d:
@@ -70,7 +74,7 @@ def test_pull_state_copies_certain_files():
 
         r2 = Repository.init(d2)
 
-        logger.debug('pulling {} -> {}'.format(d1, d2))
+        logger.debug(f'pulling {d1} -> {d2}')
         r2.pull_state(d1)
 
         # r2 should now contain the location state of r1,
@@ -83,8 +87,8 @@ def test_pull_state_copies_certain_files():
 
 def test_clone_empty():
     with TempDir() as d1, TempDir() as d2:
-        r1 = Repository.init(d1)
-        r2 = Repository.clone(d2, d1)
+        Repository.init(d1)
+        Repository.clone(d2, d1)
         assert (d2 / d_harmony / 'config').is_file()
 
 def test_clone_copies_certain_files():
@@ -93,7 +97,7 @@ def test_clone_copies_certain_files():
         (d1 / 'hallo.txt').write_text('hallo')
         r1.commit()
 
-        r2 = Repository.clone(d2, d1)
+        Repository.clone(d2, d1)
         assert (d2 / d_harmony / 'config').is_file()
 
         assert directories_equal(
@@ -152,8 +156,8 @@ def test_pull_state_automerge_same_content_clock_value():
         rA = Repository.init(A)
         rB = Repository.clone(B, A)
 
-        logger.debug('A.id={}'.format(rA.id))
-        logger.debug('B.id={}'.format(rB.id))
+        logger.debug(f'A.id={rA.id}')
+        logger.debug(f'B.id={rB.id}')
 
         (A / 'hello.txt').write_text('Hello, World!')
         rA.commit()
@@ -163,17 +167,19 @@ def test_pull_state_automerge_same_content_clock_value():
         rB.commit()
         state_b = rB.repository_state['hello.txt']
 
-        assert not state_a.clock.comparable(state_b.clock), 'clk A={} clk B={}'.format(state_a.clock, state_b.clock)
-
+        assert not state_a.clock.comparable(state_b.clock), \
+            'clk A={} clk B={}'.format(state_a.clock, state_b.clock)
 
         rB.pull_state(A)
 
         # Auto merge should happen and identify the same contents,
         # resulting in a new commit in B with a merged clock value
         state_b_new = rB.repository_state['hello.txt']
-        assert state_b_new.clock > state_b.clock, 'clk Bnew={} clk B={}'.format(state_b_new.clock, state_b.clock)
-        assert state_b_new.clock > state_a.clock, 'clk Bnew={} clk A={}'.format(state_b_new.clock, state_a.clock)
+        assert state_b_new.clock > state_b.clock, \
+            'clk Bnew={} clk B={}'.format(state_b_new.clock, state_b.clock)
 
+        assert state_b_new.clock > state_a.clock, \
+            'clk Bnew={} clk A={}'.format(state_b_new.clock, state_a.clock)
 
 def test_pull_state_finds_conflicts():
     with TempDir() as d1, TempDir() as d2:
@@ -348,7 +354,7 @@ def test_rename_updates_location_state():
         rA.commit()
 
         # B
-        conflicts = rB.pull_state(A)
+        rB.pull_state(A)
         rB.pull_file('x.txt', A)
 
         # A
@@ -356,7 +362,7 @@ def test_rename_updates_location_state():
         rA.commit()
 
         # B
-        conflicts = rB.pull_state(A)
+        rB.pull_state(A)
         change = rB.commit()
         assert not change
 
@@ -372,6 +378,20 @@ def test_rename_updates_location_state():
         rC.pull_file('y.txt', B)
 
         assert (A / 'y.txt').read_bytes() == (C / 'y.txt').read_bytes()
+
+def test_delete_local():
+
+    with TempDir() as A:
+        rA = Repository.init(A)
+
+        scratch_txt = A / 'scratch.txt'
+        scratch_txt.write_text('Something unimportant')
+        rA.commit()
+
+        os.remove(scratch_txt)
+        rA.commit()
+
+        file_stats = rA.get_file_stats()
 
 
 # TODO:
