@@ -365,6 +365,8 @@ class Repository:
         self.remotes.save()
 
     def remove_remote(self, name):
+        # TODO: Linter is right, this does not exist,
+        # write a test for it & implement!
         self.remotes.remove(
             name = name
         )

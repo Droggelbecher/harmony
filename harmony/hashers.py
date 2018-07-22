@@ -1,11 +1,19 @@
 
 import hashlib
 import warnings
+from typing import Callable
+from typing.io import BinaryIO
 
 DEFAULT = 'sha1'
 BLOCKSIZE = 1024 ** 2
 
-def get_hasher(h):
+def get_hasher(h: str) -> Callable[[BinaryIO], str]:
+    """
+    Given a hashlib hasher name, return a function
+    that computes the hash for any filelike object, returning its digest as a string.
+    If $h is 'default', choose a default hash function.
+    """
+
     if h == 'default':
         h = DEFAULT
 
@@ -25,7 +33,7 @@ def get_hasher(h):
             hashlib_hasher.update(s)
             digest = hashlib_hasher.hexdigest()
 
-        return '{}:{}'.format(h, digest)
+        return f'{h}:{digest}'
 
     return hasher
 
