@@ -13,13 +13,13 @@ def datetime_to_iso(d):
     return d.strftime(DATETIME_FORMAT)
 
 def iso_to_datetime(s):
-    return d.strptime(s, DATETIME_FORMAT)
+    import datetime
+    return datetime.datetime.strptime(s, DATETIME_FORMAT)
 
 def shortened_id(id_):
     return id_[4:8]
 
 def has_suffix(a: Path, b: Path) -> bool:
     """Return True iff a has path b as suffix"""
-    print(a.parts[-len(b.parts):], b.parts)
     return a.parts[-len(b.parts):] == b.parts
 
