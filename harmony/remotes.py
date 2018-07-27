@@ -12,8 +12,8 @@ class Remotes(FileSerializable):
         Represents a remote Location.
         """
 
-        def __init__(self, id_ = None, name = None, location = None):
-            self.id = id_
+        def __init__(self, id=None, name=None, location=None):
+            self.id = id
             self.name = name
             self.location = str(location)
 
@@ -33,15 +33,15 @@ class Remotes(FileSerializable):
                     ^ hash(self.location)
 
 
-    def __init__(self, path, by_name = None, by_id = None):
+    def __init__(self, path, by_name=None, by_id=None):
         super().__init__(path)
         self.by_name = by_name if by_name else {}
         self.by_id = by_id if by_id else {}
 
     @classmethod
     def from_dict(class_, d):
-        by_name = { x['name']: class_.Remote.from_dict(x) for x in d['remotes'] }
-        by_id = { x['id']: class_.Remote.from_dict(x) for x in d['remotes'] }
+        by_name = {x['name']: class_.Remote.from_dict(x) for x in d['remotes']}
+        by_id = {x['id']: class_.Remote.from_dict(x) for x in d['remotes']}
         return class_(d['path'], by_name, by_id)
 
     def to_dict(self):
@@ -49,7 +49,7 @@ class Remotes(FileSerializable):
         return {
             'remotes': sorted(
                 [x.to_dict() for x in l],
-                key = lambda d: (d['name'], d['id'], d['location'])
+                key=lambda d: (d['name'], d['id'], d['location'])
             ),
         }
 

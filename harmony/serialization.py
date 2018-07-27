@@ -49,10 +49,10 @@ class Serializable(object):
 
     @classmethod
     def prepare_value_for_dict(class_, k, v):
-        if isinstance(v, Path) or isinstance(v, PosixPath):
+        if isinstance(v, (Path, PosixPath)):
             v = str(v)
 
-        if isinstance(k, Path) or isinstance(k, PosixPath):
+        if isinstance(k, (Path, PosixPath)):
             k = str(k)
 
         if hasattr(v, 'to_dict'):
