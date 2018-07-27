@@ -10,8 +10,7 @@ class InitCommand(Command):
     command = 'init'
     help = 'create a new repository'
 
-    @staticmethod
-    def setup_parser(p):
+    def setup_parser(self, p):
         p.add_argument('--name', default=None, required=False)
 
     def execute(self, ns):
@@ -74,11 +73,9 @@ class StatusCommand(Command):
         logger.debug(f'file stats: {files}')
 
         def status(f):
-
             s = ' '
             if not f.exists_in_repository:
                 s = '?'
-
             else:
                 if f.exists_in_location_state:
                     if not f.exists_in_workdir:
@@ -87,7 +84,6 @@ class StatusCommand(Command):
                         s = 'M'
                     else:
                         s = ' '
-
                 else:
                     if f.exists_in_workdir:
                         # File is known in repository but was not expected in this location
@@ -98,10 +94,22 @@ class StatusCommand(Command):
                         s = 'i'
 
             s += ' ' if f.is_most_recent else 'O'
-
             return s
 
-        console.write_table([(status(f), path) for path, f in sorted(files.items())])
+        def boring(f):
+            return (
+                f.exists_in_repository
+                and f.exists_in_location_state
+                and f.exists_in_workdir
+                and not f.maybe_modified
+                and f.is_most_recent
+            )
+
+        console.write_table([
+            (status(f), path)
+            for path, f in sorted(files.items())
+            if not boring(f)
+        ])
 
 class GetCommand(Command):
     # TODO: Write test ensuring this gets the most recent version in the
@@ -118,8 +126,8 @@ class GetCommand(Command):
     #         Get the latest version from any available remote
 
     def setup_parser(self, p):
-        p.add_argument('path', help = 'path of file (relative to repository root)')
-        p.add_argument('remote_spec', help = 'Location to pull from')
+        p.add_argument('path', help='path of file (relative to repository root)')
+        p.add_argument('remote_spec', help='Location to pull from')
 
     def execute(self, ns):
         r = self.make_repository(ns)
@@ -134,12 +142,12 @@ class RemoteCommand(CommandGroup):
         help = 'add a remote location for convenient access'
 
         def setup_parser(self, p):
-            p.add_argument('name', help = 'shorthand local name for this remote location')
-            p.add_argument('url', help = 'URL of the remote')
+            p.add_argument('name', help='shorthand local name for this remote location')
+            p.add_argument('url', help='URL of the remote')
 
         def execute(self, ns):
             r = self.make_repository(ns)
-            r.add_remote(name = ns.name, location = ns.url)
+            r.add_remote(name=ns.name, location=ns.url)
 
     class RemoveCommand(Command):
         command = 'remove'

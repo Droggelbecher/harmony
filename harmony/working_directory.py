@@ -139,7 +139,7 @@ class WorkingDirectory:
         for path in paths:
             f = self.scan_file(path)
             r[path] = f
-            if Stats:
+            if Stats and f.size is not None:
                 stats.update(f.size)
         return r
 

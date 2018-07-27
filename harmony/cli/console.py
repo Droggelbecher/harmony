@@ -14,8 +14,11 @@ def write_table(rows, headers = None):
 
     if headers is not None:
         max_column_widths = [len(str(s)) for s in headers]
-    else:
+    elif rows:
         max_column_widths = [len(str(s)) for s in rows[0]]
+    else:
+        # No headers, no rows, there is really nothing to print for us.
+        return
 
     for row in rows:
         max_column_widths = [
