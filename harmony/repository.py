@@ -271,17 +271,21 @@ class Repository:
     # Actual repository operations
     #
 
-    def commit(self) -> bool:
+    def commit(self, Stats=None) -> bool:
         """
         Scan file states and commit to location state and repository state.
         Return True iff the commit denotes an actual change.
+
+        Stats: Optional class with constructor(total_bytes) and .update(bytes_scanned) method
+            for progress feedback.
         """
         logger.debug(f'{self.short_id} committing...')
         any_change = file_state_logic.commit(
             self.id,
             self.working_directory,
             self.location_states,
-            self.repository_state
+            self.repository_state,
+            Stats,
         )
 
         self.location_states.save()

@@ -1,7 +1,7 @@
 
 import logging
 from copy import deepcopy
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Any
 from pathlib import Path
 
 from harmony.util import shortened_id
@@ -15,7 +15,9 @@ def commit(
         local_location_id: str,
         working_directory: WorkingDirectory,
         location_states: LocationStates,
-        repository_state: RepositoryState):
+        repository_state: RepositoryState,
+        Stats: Any = None
+):
     """
     Scan the given working directory for changes and commit them to local
     state storage.
@@ -40,6 +42,10 @@ def commit(
     repository_state:
         RepositoryState instance representing the local repository state
         storage. Will (possibly) be modified.
+
+    Stats:
+        Optional class with constructor(total_bytes) and .update(bytes_scanned) method
+        for progress feedback.
 
     return:
         True iff any change was recorded.
@@ -67,16 +73,20 @@ def commit(
     #    - if file did not change:
     #      no change in hash or clock
 
-
     # Do all the file scanning before so we can be sure to do it at most
     # once per file in the WD
-    wd_states = {
-        path: working_directory.scan_file(path)
+
+    files_to_scan = [
+        path
         for path in paths
         if working_directory.file_maybe_modified(
             location_states.get_file_state(id_, path)
         )
-    }
+    ]
+
+    wd_states = working_directory.scan_files(
+        files_to_scan, Stats=Stats
+    )
 
     location_state_cache = {
         path: location_states.get_file_state(id_, path)

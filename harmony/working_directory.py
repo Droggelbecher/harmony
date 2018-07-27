@@ -2,7 +2,7 @@
 import os
 import logging
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Any, Dict
 
 from harmony import hashers
 from harmony.serialization import Serializable
@@ -16,7 +16,7 @@ class FileState(Serializable):
     Generated in WorkingDirectory, stored in LocationState.
     """
 
-    def __init__(self, path = None, digest = None, size = None, mtime = None, wipe = False):
+    def __init__(self, path=None, digest=None, size=None, mtime=None, wipe=False):
         self.path = Path(path)
         self.digest = digest
         self.size = size
@@ -120,6 +120,28 @@ class WorkingDirectory:
             return True
 
         return mtime > file_state.mtime or size != file_state.size
+
+    def scan_files(self, paths: Iterable[Path], Stats: Any=None) -> Dict[Path, FileState]:
+        """
+        Stats:
+            Constructor takes a single float as arg which is sum of file size.
+            Has an update(x) method that informs is that an additional x bytes have
+            been scanned.
+        """
+        total_size = sum(
+            (self.path / path).stat().st_size
+            for path in paths
+            if (self.path / path).exists()
+        )
+        if Stats:
+            stats = Stats(total_size)
+        r = {}
+        for path in paths:
+            f = self.scan_file(path)
+            r[path] = f
+            if Stats:
+                stats.update(f.size)
+        return r
 
     def scan_file(self, path: Path) -> FileState:
         """

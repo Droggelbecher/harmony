@@ -1,27 +1,37 @@
 #!/usr/bin/env python3
 
+import logging
+
 from harmony.repository import Repository
 from harmony.cli.command import Command, CommandGroup
 from harmony.cli import console
-import logging
 
 class InitCommand(Command):
     command = 'init'
     help = 'create a new repository'
 
-    def setup_parser(self, p):
-        p.add_argument('--name', default = None, required = False)
+    @staticmethod
+    def setup_parser(p):
+        p.add_argument('--name', default=None, required=False)
 
     def execute(self, ns):
-        Repository.init( working_directory = ns.cwd, name = ns.name )
+        Repository.init(working_directory=ns.cwd, name=ns.name)
 
 class CommitCommand(Command):
     command = 'commit'
     help = 'record current repository state into history'
 
     def execute(self, ns):
+        from tqdm import tqdm
         r = self.make_repository(ns)
-        any_change = r.commit()
+        any_change = r.commit(
+            Stats=lambda x: tqdm(
+                total=x,
+                unit='B',
+                unit_scale=True,
+                ncols=60,
+            )
+        )
         if not any_change:
             print('Nothing to commit.')
 
@@ -30,11 +40,11 @@ class PullStateCommand(Command):
     help = 'pull state from given remote or all that are available'
 
     def setup_parser(self, p):
-        p.add_argument('remote', help = 'remote to pull from')
+        p.add_argument('remote', help='remote to pull from')
 
     def execute(self, ns):
         r = self.make_repository(ns)
-        r.pull_state(remote_spec = ns.remote)
+        r.pull_state(remote_spec=ns.remote)
 
 class CloneCommand(Command):
     command = 'clone'
@@ -44,10 +54,10 @@ class CloneCommand(Command):
         p.add_argument('location', help = 'location of the repository to clone')
 
     def execute(self, ns):
-        r = Repository.clone(
-                working_directory = ns.cwd,
-                location = ns.location
-                )
+        Repository.clone(
+            working_directory = ns.cwd,
+            location = ns.location
+        )
 
 class StatusCommand(Command):
     command = 'status'
@@ -91,7 +101,7 @@ class StatusCommand(Command):
 
             return s
 
-        console.write_table([(status(f), f.path) for f in files])
+        console.write_table([(status(f), path) for path, f in sorted(files.items())])
 
 class GetCommand(Command):
     # TODO: Write test ensuring this gets the most recent version in the

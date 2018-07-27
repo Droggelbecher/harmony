@@ -4,6 +4,7 @@ import os
 import sys
 import argparse
 import logging
+from pathlib import Path
 
 from harmony.cli.commands import COMMANDS
 
@@ -11,17 +12,20 @@ def run_command(args):
 
     parser = argparse.ArgumentParser(description = 'Harmony')
 
-    parser.add_argument('-C',
-            dest = 'cwd',
-            help = 'Run as if Harmony was started in this directory instead of current',
-            default = os.getcwd()
-            )
+    parser.add_argument(
+        '-C',
+        dest='cwd',
+        help='Run as if Harmony was started in this directory instead of current',
+        default=os.getcwd(),
+        type=Path
+    )
 
-    parser.add_argument('-l',
-            dest = 'loglevel',
-            help = 'One of CRITICAL,ERROR,WARN,INFO,DEBUG; defaults to WARN',
-            default = 'WARN'
-            )
+    parser.add_argument(
+        '-l',
+        dest='loglevel',
+        help='One of CRITICAL,ERROR,WARN,INFO,DEBUG; defaults to WARN',
+        default='WARN'
+    )
 
     subparsers = parser.add_subparsers(title = 'subcommands')
     for command in COMMANDS:
