@@ -45,12 +45,11 @@ class Protocol(metaclass = ProtocolMeta):
 
     @classmethod
     def connect(class_, uri: URI):
-        assert isinstance(uri, (str, Path))
         uri = str(uri)
         for protocol in sorted(class_.registry.values(), key=lambda x: x.priority):
             if protocol.is_valid(uri):
                 return protocol(uri)
-        return None
+        raise ValueError(f'No protocol found to connect to "{uri}".')
 
     def __enter__(self):
         """

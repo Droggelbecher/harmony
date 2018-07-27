@@ -9,7 +9,7 @@ from pathlib import Path
 import socket
 import logging
 import uuid
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, Union
 
 from harmony import protocols
 from harmony import serialization
@@ -136,30 +136,31 @@ class Repository:
         return repo
 
     @classmethod
-    def clone(class_, working_directory: Path, location: str, name: Optional[str] = None) \
+    def clone(class_, target_directory: Path, source_directory: Path, name: Optional[str] = None) \
                 -> 'Repository':
         """
         Clone a repository from $location into $working_directory.
         """
 
         # Create empty repo $r in target location
-        target_repo = class_.init(working_directory, name)
+        target_repo = class_.init(target_directory, name)
         config_path = class_.HARMONY_SUBDIR / class_.REPOSITORY_FILE
+        source_directory = source_directory.resolve()
 
-        with protocols.connect(location) as connection:
+        with protocols.connect(source_directory) as connection:
             files = connection.pull_harmony_files([config_path])
             # Read remote repository configuration from downloaded file
             source_config = serialization.read(files[config_path])
 
         # Add source repo as remote
         target_repo.remotes.add(
-            location=location,
-            id_=source_config['id'],
+            location=source_directory,
+            id=source_config['id'],
             name=source_config['name']
         )
 
         # Pull
-        target_repo.pull_state(location)
+        target_repo.pull_state(source_directory)
         target_repo.save()
 
         return target_repo
@@ -173,7 +174,7 @@ class Repository:
         """
         Generate a suitable name for a new repository in the given $working_directory
         """
-        return '{}-{}'.format(socket.gethostname(), working_directory.name)
+        return '{}-{}'.format(socket.gethostname(), working_directory.name.replace(' ', '-'))
 
     @classmethod
     def find_harmony_directory_here(class_, directory: Path) -> Path:
@@ -293,7 +294,7 @@ class Repository:
         logger.debug(f'{self.short_id} committed. Changes seen: {any_change}')
         return any_change
 
-    def pull_state(self, remote_spec: str) \
+    def pull_state(self, remote_spec: Union[str, Path]) \
         -> Dict[
                 Path,
                 Tuple[RepositoryFileState, RepositoryFileState]
@@ -360,11 +361,11 @@ class Repository:
 
         self.commit()
 
-    def add_remote(self, name, location, id_=None):
+    def add_remote(self, name, location, id=None):
         self.remotes.add(
-            location = location,
-            name = name,
-            id_ = id_
+            location=location,
+            name=name,
+            id=id
         )
         self.remotes.save()
 
@@ -372,7 +373,7 @@ class Repository:
         # TODO: Linter is right, this does not exist,
         # write a test for it & implement!
         self.remotes.remove(
-            name = name
+            name=name
         )
         self.remotes.save()
 

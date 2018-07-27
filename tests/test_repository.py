@@ -84,6 +84,8 @@ def test_pull_state_copies_certain_files():
             d2 / d_harmony / LOCATION_STATE_DIR
             )
 
+# TODO: pull_state w/ remote ID
+
 
 def test_clone_empty():
     with TempDir() as d1, TempDir() as d2:

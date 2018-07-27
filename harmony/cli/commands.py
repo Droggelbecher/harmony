@@ -59,8 +59,8 @@ class CloneCommand(Command):
             raise Exception('Target directory must not exist')
         ns.target.mkdir()
         Repository.clone(
-            working_directory=ns.target,
-            location=ns.source
+            source_directory=ns.source,
+            target_directory=ns.target
         )
 
 class StatusCommand(Command):

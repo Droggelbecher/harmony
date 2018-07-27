@@ -53,18 +53,18 @@ class Remotes(FileSerializable):
             ),
         }
 
-    def add(self, location, name, id_ = None):
+    def add(self, location, name, id=None):
         if name in self.by_name:
-            raise ValueError('Remote with name "{}" already exists.'.format(name))
+            raise ValueError('Remote with name "{name}" already exists.')
 
-        if id_ is not None and id_ in self.by_id:
-            raise ValueError('Remote with ID "{}" already exists.'.format(id_))
+        if id is not None and id in self.by_id:
+            raise ValueError(f'Remote with ID "{id}" already exists.')
 
-        self.by_name[name] = self.Remote(id_ = id_, name = name, location = location)
-        if id_ is not None:
-            self.by_id[id_] = self.Remote(id_ = id_, name = name, location = location)
+        self.by_name[name] = self.Remote(id=id, name=name, location=location)
+        if id is not None:
+            self.by_id[id] = self.Remote(id=id, name=name, location=location)
 
-    def get_location_any(self, s):
+    def get_location_any(self, s: str) -> str:
         """
         Return a location by a "fuzzy" search
         (meaning s can either be a name or an ID of a location).
@@ -72,10 +72,11 @@ class Remotes(FileSerializable):
         r = self.get_location(s, s)
         if r is None:
             return s
+        return r
 
-    def get_location(self, id_ = None, name = None):
-        if id_ is not None and id_ in self.by_id:
-            return self.by_id[id_].location
+    def get_location(self, id=None, name=None):
+        if id is not None and id in self.by_id:
+            return self.by_id[id].location
         if name is not None and name in self.by_name:
             return self.by_name[name].location
         return None
