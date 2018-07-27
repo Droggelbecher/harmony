@@ -10,7 +10,7 @@ from harmony.cli.commands import COMMANDS
 
 def run_command(args):
 
-    parser = argparse.ArgumentParser(description = 'Harmony')
+    parser = argparse.ArgumentParser(description='Harmony')
 
     parser.add_argument(
         '-C',
@@ -27,7 +27,7 @@ def run_command(args):
         default='WARN'
     )
 
-    subparsers = parser.add_subparsers(title = 'subcommands')
+    subparsers = parser.add_subparsers(title='subcommands')
     for command in COMMANDS:
         command.add_to_parser(subparsers)
 
@@ -51,6 +51,10 @@ def run_command(args):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level = logging.WARN, format = '{levelname:7s}: {message:s} (in: {module:s}.{funcName:s}())', style = '{')
+    logging.basicConfig(
+        level=logging.WARN,
+        format='{levelname:7s}: {message:s} (in: {module:s}.{funcName:s}())',
+        style='{'
+    )
     run_command(sys.argv[1:])
 

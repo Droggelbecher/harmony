@@ -5,5 +5,9 @@ import logging
 from harmony.cli.argument_parser import run_command
 
 if __name__ == '__main__':
-    logging.basicConfig(level = logging.WARN, format = '{levelname:7s}: {message:s} (in: {module:s}.{funcName:s}())', style = '{')
+    logging.basicConfig(
+        level=logging.WARN,
+        format='{levelname:7s}: {message:s} (in: {module:s}.{funcName:s}())',
+        style='{'
+    )
     run_command(sys.argv[1:])

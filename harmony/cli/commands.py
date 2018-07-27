@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
+from pathlib import Path
 
 from harmony.repository import Repository
 from harmony.cli.command import Command, CommandGroup
@@ -50,12 +51,16 @@ class CloneCommand(Command):
     help = 'create a repository that is logically connected to an existing one'
 
     def setup_parser(self, p):
-        p.add_argument('location', help = 'location of the repository to clone')
+        p.add_argument('source', help='location of the repository to clone', type=Path)
+        p.add_argument('target', help='directory to clone to, must not exist', type=Path)
 
     def execute(self, ns):
+        if ns.target.exists():
+            raise Exception('Target directory must not exist')
+        ns.target.mkdir()
         Repository.clone(
-            working_directory = ns.cwd,
-            location = ns.location
+            working_directory=ns.target,
+            location=ns.source
         )
 
 class StatusCommand(Command):
